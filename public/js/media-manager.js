@@ -42,8 +42,8 @@ class MediaManager {
     }
   }
 
-  // Request media permissions and get stream
-  async getLocalStream(constraints = MEDIA_CONSTRAINTS) {
+  // Request media permissions and get stream with fallback strategy
+  async getLocalStream(constraints = MEDIA_CONSTRAINTS, isRetry = false) {
     try {
       console.log('Requesting media stream with constraints:', constraints);
       
@@ -82,6 +82,66 @@ class MediaManager {
       error.userMessage = errorMessage;
       throw error;
     }
+  }
+
+  // Advanced retry with fallback constraints
+  async getLocalStreamWithFallback(preferAudio = false, preferVideo = false) {
+    const strategies = [
+      MEDIA_CONSTRAINTS,
+      FALLBACK_CONSTRAINTS
+    ];
+
+    // Add audio-only or video-only based on preferences
+    if (preferAudio && !preferVideo) {
+      strategies.unshift(AUDIO_ONLY_CONSTRAINTS);
+    } else if (preferVideo && !preferAudio) {
+      strategies.unshift(VIDEO_ONLY_CONSTRAINTS);
+    }
+
+    let lastError = null;
+
+    for (let i = 0; i < strategies.length; i++) {
+      try {
+        console.log(`Attempting media access with strategy ${i + 1}:`, strategies[i]);
+        const stream = await this.getLocalStream(strategies[i], true);
+        console.log(`✓ Successfully got stream with strategy ${i + 1}`);
+        return stream;
+      } catch (error) {
+        lastError = error;
+        console.warn(`✗ Strategy ${i + 1} failed:`, error.message);
+
+        // If this is permission error, don't try other strategies for this permission
+        if (error.name === 'NotAllowedError' && i === 0) {
+          // Try without the denied device
+          if (error.message.includes('video')) {
+            console.log('Video permission denied, trying audio-only...');
+            try {
+              return await this.getLocalStream(AUDIO_ONLY_CONSTRAINTS, true);
+            } catch (audioError) {
+              lastError = audioError;
+            }
+          } else if (error.message.includes('audio')) {
+            console.log('Audio permission denied, trying video-only...');
+            try {
+              return await this.getLocalStream(VIDEO_ONLY_CONSTRAINTS, true);
+            } catch (videoError) {
+              lastError = videoError;
+            }
+          }
+        }
+
+        // Continue to next strategy if overconstrained
+        if (error.name === 'OverconstrainedError' || error.name === 'NotFoundError') {
+          continue;
+        }
+      }
+    }
+
+    // All strategies failed
+    const errorMsg = `Unable to access camera and microphone after ${strategies.length} attempts. ${lastError?.userMessage || lastError?.message}`;
+    const finalError = new Error(errorMsg);
+    finalError.name = lastError?.name || 'MediaAccessError';
+    throw finalError;
   }
 
   // Start screen sharing

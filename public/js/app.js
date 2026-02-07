@@ -404,14 +404,48 @@ class App {
         this.uiManager.updateVideoPreview(stream);
         console.log('Local stream obtained successfully');
       } catch (error) {
-        console.warn('Camera/microphone access denied or unavailable:', error);
-        // Show warning but allow user to proceed
+      // Get initial stream with fallback strategy
+      try {
         if (error.name === 'NotAllowedError') {
           this.uiManager.showNotification('Camera access blocked - audio-only mode', 'warning');
         } else if (error.name === 'NotFoundError') {
           this.uiManager.showNotification('No camera found - audio-only mode', 'warning');
         }
         // Don't fail - user can still join without video
+      }
+      // Get initial stream with fallback strategy
+      try {
+        const stream = await this.mediaManager.getLocalStreamWithFallback();
+        this.state.localStream = stream;
+        
+        // Check which tracks are available
+        const hasVideo = stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].enabled;
+
+        // Update media status badges
+        const mediaState = this.mediaManager.getMediaState();
+        this.uiManager.updateMediaStatusBadges(mediaState);
+        const hasAudio = stream.getAudioTracks().length > 0 && stream.getAudioTracks()[0].enabled;
+        
+        // Update UI preview
+          this.uiManager.showMediaAlert('📷 Camera access blocked - joining with audio only');
+          this.uiManager.updateVideoPreview(stream);
+          this.uiManager.showMediaAlert('🎤 Microphone access blocked - joining with video only');
+        } else if (hasVideo && hasAudio) {
+          console.log('✓ Both camera and microphone access granted');
+        } else {
+          console.log('✓ Local stream (audio-only) obtained successfully');
+        }
+        this.uiManager.showMediaAlert('⚠️ ' + (error.message || 'Unable to access camera or microphone'));
+        // Show notification based on available tracks
+        if (!hasVideo && hasAudio) {
+          this.uiManager.showNotification('📷 Camera access blocked - joining with audio only', 'info');
+        } else if (hasVideo && !hasAudio) {
+          this.uiManager.showNotification('🎤 Microphone access blocked - joining with video only', 'warning');
+        }
+      } catch (error) {
+        console.error('Unable to access media devices:', error);
+        this.uiManager.showNotification(error.message || 'Unable to access camera or microphone', 'error');
+        // Still allow to proceed to setup page - user can join audio-only
       }
       
       // Show setup page
@@ -484,6 +518,8 @@ class App {
       // Show meeting page immediately
       this.uiManager.showPage('meeting');
       this.uiManager.startMeetingTimer();
+      // Update meeting page media indicators
+      this.updateMeetingPageMediaStatus();
 
       // Emit join-room event to server
       console.log(`Emitting join-room for room ${this.state.roomId} as ${this.state.username}`);
@@ -587,6 +623,8 @@ class App {
       
       // Update local video tile
       this.updateLocalMediaIndicators();
+      this.updateMeetingPageMediaStatus();
+        this.updateMeetingPageMediaStatus();
       
       // Notify others
       this.sendMediaState();
@@ -606,6 +644,8 @@ class App {
       
       // Update local media indicators
       this.updateLocalMediaIndicators();
+      this.updateMeetingPageMediaStatus();
+        this.updateMeetingPageMediaStatus();
       
       // Notify others
       this.sendMediaState();
@@ -622,6 +662,7 @@ class App {
       
       this.mediaManager.toggleVideo(newState);
       this.uiManager.setSetupCameraButtonState(newState);
+      this.uiManager.updateMediaStatusBadges(this.mediaManager.getMediaState());
     } catch (error) {
       console.error('Error toggling camera:', error);
     }
@@ -634,6 +675,7 @@ class App {
       
       this.mediaManager.toggleAudio(newState);
       this.uiManager.setSetupMicButtonState(newState);
+      this.uiManager.updateMediaStatusBadges(this.mediaManager.getMediaState());
     } catch (error) {
       console.error('Error toggling microphone:', error);
     }
@@ -651,9 +693,14 @@ class App {
       if (this.webrtcManager) {
         this.webrtcManager.updateLocalStream(this.state.localStream);
       }
+      
+      // Update status badges
+      this.uiManager.updateMediaStatusBadges(this.mediaManager.getMediaState());
+      this.uiManager.showMediaAlert('✓ Camera switched successfully');
+      this.updateMeetingPageMediaStatus();
     } catch (error) {
       console.error('Error switching camera:', error);
-      this.uiManager.showNotification('Failed to switch camera', 'error');
+      this.uiManager.showMediaAlert('✗ Failed to switch camera: ' + error.message);
     }
   }
 
@@ -666,9 +713,14 @@ class App {
       if (this.webrtcManager) {
         this.webrtcManager.updateLocalStream(this.state.localStream);
       }
+      
+      // Update status badges
+      this.uiManager.updateMediaStatusBadges(this.mediaManager.getMediaState());
+      this.uiManager.showMediaAlert('✓ Microphone switched successfully');
+      this.updateMeetingPageMediaStatus();
     } catch (error) {
       console.error('Error switching microphone:', error);
-      this.uiManager.showNotification('Failed to switch microphone', 'error');
+      this.uiManager.showMediaAlert('✗ Failed to switch microphone: ' + error.message);
     }
   }
 
@@ -723,6 +775,41 @@ class App {
     const mediaState = this.mediaManager.getMediaState();
     this.uiManager.updateMediaIndicator('local', mediaState);
   }
+
+    updateMeetingPageMediaStatus() {
+      const cameraIndicator = document.querySelector('.status-indicator[data-media="camera"]');
+      const micIndicator = document.querySelector('.status-indicator[data-media="microphone"]');
+    
+      if (!cameraIndicator || !micIndicator) return;
+    
+      const mediaState = this.mediaManager.getMediaState();
+      const hasVideo = mediaState.camera;
+      const hasAudio = mediaState.microphone;
+    
+      if (cameraIndicator) {
+        if (hasVideo) {
+          cameraIndicator.classList.remove('status-off');
+          cameraIndicator.innerHTML = '<i class="fas fa-video"></i>';
+          cameraIndicator.title = 'Camera is on';
+        } else {
+          cameraIndicator.classList.add('status-off');
+          cameraIndicator.innerHTML = '<i class="fas fa-video-slash"></i>';
+          cameraIndicator.title = 'Camera is off';
+        }
+      }
+    
+      if (micIndicator) {
+        if (hasAudio) {
+          micIndicator.classList.remove('status-off');
+          micIndicator.innerHTML = '<i class="fas fa-microphone"></i>';
+          micIndicator.title = 'Microphone is on';
+        } else {
+          micIndicator.classList.add('status-off');
+          micIndicator.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+          micIndicator.title = 'Microphone is off';
+        }
+      }
+    }
 
   sendMediaState() {
     if (this.state.isInMeeting) {

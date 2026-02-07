@@ -378,12 +378,41 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start server
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📡 WebSocket ready for connections`);
-});
+// Start server with retry on EADDRINUSE
+const DEFAULT_PORT = parseInt(process.env.PORT, 10) || 3000;
+
+function startServer(port = DEFAULT_PORT, maxRetries = 5) {
+  let attempts = 0;
+
+  function tryListen(p) {
+    server.once('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.warn(`Port ${p} in use, trying port ${p + 1}...`);
+        attempts++;
+        if (attempts <= maxRetries) {
+          tryListen(p + 1);
+        } else {
+          console.error(`Failed to bind server after ${attempts} attempts:`, err);
+          process.exit(1);
+        }
+      } else {
+        console.error('Server error:', err);
+        process.exit(1);
+      }
+    });
+
+    server.listen(p, () => {
+      console.log(`🚀 Server running on http://localhost:${p}`);
+      console.log('📡 WebSocket ready for connections');
+      // remove the one-time error handler to avoid memory leaks
+      server.removeAllListeners('error');
+    });
+  }
+
+  tryListen(port);
+}
+
+startServer();
 
 // Handle graceful shutdown
 process.on('SIGINT', () => {

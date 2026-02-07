@@ -126,12 +126,25 @@
                   <i class="fas fa-microphone"></i>
                 </button>
               </div>
+              <div class="preview-status">
+                <span id="camera-status" class="status-badge status-active">
+                  <i class="fas fa-circle"></i> Camera On
+                </span>
+                <span id="microphone-status" class="status-badge status-active">
+                  <i class="fas fa-circle"></i> Mic On
+                </span>
+              </div>
             </div>
           </div>
         </div>
         
         <!-- Right: Setup Controls -->
         <div class="controls-section">
+          <div class="media-status-alert" id="media-status-alert" style="display:none;">
+            <i class="fas fa-info-circle"></i>
+            <span id="media-status-message"></span>
+          </div>
+
           <div class="control-group">
             <label for="username-input">
               <i class="fas fa-user"></i> Your Name
@@ -153,6 +166,7 @@
           <div class="control-group">
             <label for="camera-select">
               <i class="fas fa-video"></i> Camera
+              <span id="camera-count" class="device-count"></span>
             </label>
             <div class="select-wrapper">
               <i class="fas fa-camera"></i>
@@ -165,6 +179,7 @@
           <div class="control-group">
             <label for="microphone-select">
               <i class="fas fa-microphone"></i> Microphone
+              <span id="microphone-count" class="device-count"></span>
             </label>
             <div class="select-wrapper">
               <i class="fas fa-microphone-alt"></i>
@@ -181,11 +196,15 @@
             <div class="options-grid">
               <div class="option-item">
                 <input type="checkbox" id="toggle-audio" checked>
-                <label for="toggle-audio">Join with audio</label>
+                <label for="toggle-audio">
+                  <i class="fas fa-microphone"></i> Join with audio
+                </label>
               </div>
               <div class="option-item">
                 <input type="checkbox" id="toggle-video" checked>
-                <label for="toggle-video">Join with video</label>
+                <label for="toggle-video">
+                  <i class="fas fa-video"></i> Join with video
+                </label>
               </div>
             </div>
           </div>
@@ -238,6 +257,14 @@
         <button id="btn-fullscreen" class="btn-topbar" title="Fullscreen">
           <i class="fas fa-expand"></i>
         </button>
+          <div class="media-status-bar">
+            <span id="meeting-camera-status" class="status-indicator status-on" title="Camera">
+              <i class="fas fa-video"></i>
+            </span>
+            <span id="meeting-mic-status" class="status-indicator status-on" title="Microphone">
+              <i class="fas fa-microphone"></i>
+            </span>
+          </div>
       </div>
     </div>
     

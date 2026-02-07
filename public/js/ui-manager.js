@@ -110,12 +110,28 @@ class UIManager {
     cameraSelect.innerHTML = '';
     micSelect.innerHTML = '';
     
+    // Update device counts
+    const cameraCount = document.getElementById('camera-count');
+    const micCount = document.getElementById('microphone-count');
+    
+    if (cameraCount) {
+      cameraCount.textContent = devices.videoinput.length > 0 
+        ? `(${devices.videoinput.length})` 
+        : '(0)';
+    }
+    if (micCount) {
+      micCount.textContent = devices.audioinput.length > 0 
+        ? `(${devices.audioinput.length})` 
+        : '(0)';
+    }
+    
     // Add camera options
     if (devices.videoinput.length === 0) {
       const option = document.createElement('option');
       option.textContent = 'No cameras found';
       option.disabled = true;
       cameraSelect.appendChild(option);
+      cameraSelect.disabled = true;
     } else {
       devices.videoinput.forEach((device, index) => {
         const option = document.createElement('option');
@@ -123,6 +139,7 @@ class UIManager {
         option.textContent = device.label || `Camera ${index + 1}`;
         cameraSelect.appendChild(option);
       });
+      cameraSelect.disabled = false;
     }
     
     // Add microphone options
@@ -131,6 +148,7 @@ class UIManager {
       option.textContent = 'No microphones found';
       option.disabled = true;
       micSelect.appendChild(option);
+      micSelect.disabled = true;
     } else {
       devices.audioinput.forEach((device, index) => {
         const option = document.createElement('option');
@@ -138,6 +156,61 @@ class UIManager {
         option.textContent = device.label || `Microphone ${index + 1}`;
         micSelect.appendChild(option);
       });
+      micSelect.disabled = false;
+    }
+  }
+
+  // Update camera/microphone status indicators on setup page
+  updateMediaStatusBadges(mediaState) {
+    const cameraStatus = document.getElementById('camera-status');
+    const micStatus = document.getElementById('microphone-status');
+
+    if (cameraStatus) {
+      if (mediaState.camera) {
+        cameraStatus.classList.remove('status-inactive');
+        cameraStatus.classList.add('status-active');
+        cameraStatus.innerHTML = '<i class="fas fa-circle"></i> Camera On';
+      } else {
+        cameraStatus.classList.remove('status-active');
+        cameraStatus.classList.add('status-inactive');
+        cameraStatus.innerHTML = '<i class="fas fa-circle-slash"></i> Camera Off';
+      }
+    }
+
+    if (micStatus) {
+      if (mediaState.microphone) {
+        micStatus.classList.remove('status-inactive');
+        micStatus.classList.add('status-active');
+        micStatus.innerHTML = '<i class="fas fa-circle"></i> Mic On';
+      } else {
+        micStatus.classList.remove('status-active');
+        micStatus.classList.add('status-inactive');
+        micStatus.innerHTML = '<i class="fas fa-circle-slash"></i> Mic Off';
+      }
+    }
+  }
+
+  // Show media access alert
+  showMediaAlert(message) {
+    const alert = document.getElementById('media-status-alert');
+    const msg = document.getElementById('media-status-message');
+    
+    if (alert && msg) {
+      msg.textContent = message;
+      alert.style.display = 'flex';
+      
+      // Auto-hide after 8 seconds
+      setTimeout(() => {
+        alert.style.display = 'none';
+      }, 8000);
+    }
+  }
+
+  // Hide media access alert
+  hideMediaAlert() {
+    const alert = document.getElementById('media-status-alert');
+    if (alert) {
+      alert.style.display = 'none';
     }
   }
 
@@ -176,6 +249,9 @@ class UIManager {
     }
     
     const tile = this.createVideoTile('local', stream, username, true);
+    tile.id = 'local-video-tile';
+    // Ensure max tiles (1 local + up to 2 remote) => total 3
+    this.ensureMaxTiles(3);
     videoGrid.appendChild(tile);
     
     // Add to participants list
@@ -193,6 +269,8 @@ class UIManager {
     
     const tile = this.createVideoTile(peerId, stream, username, false);
     tile.id = `remote-video-tile-${peerId}`;
+    // Ensure max tiles (1 local + up to 2 remote) => total 3
+    this.ensureMaxTiles(3);
     videoGrid.appendChild(tile);
     
     // Add to participants list
@@ -246,6 +324,39 @@ class UIManager {
     
     this.removeParticipant(peerId);
     this.remoteStreams.delete(peerId);
+  }
+
+  // Ensure the video grid does not exceed `max` tiles.
+  // Keeps the local tile and removes oldest remote tiles first.
+  ensureMaxTiles(max = 3) {
+    const videoGrid = document.getElementById('video-grid');
+    if (!videoGrid) return;
+
+    const tiles = Array.from(videoGrid.children);
+    while (tiles.length >= max) {
+      // Find oldest removable tile (first that's not local)
+      const removable = tiles.find(t => t.id !== 'local-video-tile');
+      if (!removable) break; // only local remains
+
+      // Extract peerId from id attribute if possible
+      const match = removable.id && removable.id.match(/remote-video-tile-(.+)/);
+      if (match && match[1]) {
+        const peerId = match[1];
+        // Remove UI tile
+        removable.remove();
+        // Remove from internal maps
+        this.remoteStreams.delete(peerId);
+        this.removeParticipant(peerId);
+      } else {
+        // Fallback: just remove the element
+        removable.remove();
+      }
+
+      // Recompute tiles
+      const remaining = Array.from(videoGrid.children);
+      tiles.length = 0;
+      tiles.push(...remaining);
+    }
   }
 
   updateMediaIndicator(peerId, mediaState) {
