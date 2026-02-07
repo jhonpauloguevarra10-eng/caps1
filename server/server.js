@@ -25,6 +25,11 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
+// Handle room parameter in URL
+app.get('/room/:roomId', (req, res) => {
+  res.redirect(`/?room=${req.params.roomId}`);
+});
+
 // API endpoint to create meeting
 app.get('/api/create-meeting', (req, res) => {
   const meetingId = uuidv4().substring(0, 8).toUpperCase();

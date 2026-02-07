@@ -31,7 +31,18 @@ class App {
 
     this.setupEventListeners();
     this.setupSocketListeners();
-    this.uiManager.showPage('landing');
+    
+    // Check for room parameter in URL (auto-join from link)
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomFromUrl = urlParams.get('room');
+    
+    if (roomFromUrl) {
+      console.log('Meeting link detected, auto-joining room:', roomFromUrl);
+      this.state.roomId = roomFromUrl;
+      this.prepareForMeeting();
+    } else {
+      this.uiManager.showPage('landing');
+    }
   }
 
   // ==================== EVENT LISTENERS ====================
@@ -168,18 +179,31 @@ class App {
     }
 
     try {
-      const url = new URL(link);
-      const roomId = url.searchParams.get('room');
+      let roomId = null;
+      
+      // Try to parse as full URL first
+      try {
+        const url = new URL(link, window.location.origin);
+        roomId = url.searchParams.get('room');
+      } catch (e) {
+        // If not a valid URL, treat as room code directly
+        roomId = null;
+      }
+      
+      // If not found in URL params, treat link as room code
+      if (!roomId && link.length === 8 && link === link.toUpperCase()) {
+        roomId = link;
+      }
       
       if (!roomId) {
-        throw new Error('Invalid meeting link');
+        throw new Error('Invalid meeting link format');
       }
 
       this.state.roomId = roomId;
       this.prepareForMeeting();
     } catch (error) {
       console.error('Error parsing link:', error);
-      this.uiManager.showSetupError('Invalid meeting link. Please check and try again.');
+      this.uiManager.showSetupError('Invalid meeting link. Paste the full link or 8-digit code.');
     }
   }
 

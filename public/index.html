@@ -10,30 +10,53 @@
   <!-- Landing Page -->
   <div id="landing-page" class="page">
     <div class="landing-container">
-      <div class="landing-content">
-        <h1 class="app-title">🎥 VideoMeet</h1>
-        <p class="app-description">Crystal clear video conferencing for everyone</p>
-        
-        <div class="landing-buttons">
-          <button id="btn-new-meeting" class="btn btn-primary btn-lg">
-            <span class="btn-icon">➕</span>
-            Start New Meeting
-          </button>
+      <div class="landing-card">
+        <div class="landing-left">
+          <h1 class="hero-title">VideoMeet</h1>
+          <p class="hero-sub">Premium video conferencing designed for seamless collaboration</p>
           
-          <div class="divider">OR</div>
-          
-          <div class="join-section">
-            <input 
-              type="text" 
-              id="meeting-link-input" 
-              class="input-field" 
-              placeholder="Paste meeting link..."
-              autocomplete="off"
-            >
-            <button id="btn-join-from-link" class="btn btn-secondary btn-lg">
-              <span class="btn-icon">🔗</span>
-              Join Meeting
+          <div class="cta-row">
+            <button id="btn-new-meeting" class="btn btn-primary" style="padding: 14px 32px; border-radius: 10px; font-weight: 600; font-size: 1rem;">
+              ➕ Start Meeting
             </button>
+          </div>
+          
+          <div class="join-section" style="margin-top: 28px;">
+            <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 10px; font-weight: 500;">Join via link</p>
+            <div style="display: flex; gap: 8px;">
+              <input 
+                type="text" 
+                id="meeting-link-input" 
+                class="muted-input" 
+                placeholder="Paste meeting code or link..."
+                autocomplete="off"
+                style="flex: 1; padding: 12px 14px; border-radius: 10px;"
+              >
+              <button id="btn-join-from-link" class="btn btn-primary" style="padding: 12px 24px; border-radius: 10px; font-weight: 600;">
+                Join
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="landing-right">
+          <div class="features">
+            <div class="feature">
+              <div class="icon">🎥</div>
+              <div><strong>Crystal Clear Video</strong><br><span style="font-size: 0.85rem; color: var(--muted);">Up to HD</span></div>
+            </div>
+            <div class="feature">
+              <div class="icon">🎤</div>
+              <div><strong>Crystal Audio</strong><br><span style="font-size: 0.85rem; color: var(--muted);">Noise cancellation</span></div>
+            </div>
+            <div class="feature">
+              <div class="icon">💬</div>
+              <div><strong>Real-time Chat</strong><br><span style="font-size: 0.85rem; color: var(--muted);">Stay connected</span></div>
+            </div>
+            <div class="feature">
+              <div class="icon">🔒</div>
+              <div><strong>Secure & Private</strong><br><span style="font-size: 0.85rem; color: var(--muted);">End-to-end safe</span></div>
+            </div>
           </div>
         </div>
       </div>
