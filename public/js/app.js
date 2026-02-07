@@ -283,17 +283,35 @@ class App {
   async startNewMeeting() {
     try {
       this.uiManager.showLoading('Creating meeting...');
-      
-      // Generate room ID
-      this.state.roomId = this.generateRoomId();
+      // Try to create meeting on server so the link/code is valid for others
+      try {
+        const res = await fetch('/api/create-meeting');
+        if (res.ok) {
+          const json = await res.json();
+          if (json && json.meetingId) {
+            this.state.roomId = json.meetingId;
+          }
+        }
+      } catch (err) {
+        console.warn('Server create-meeting failed, falling back to client-generated ID', err);
+      }
+
+      // Fallback to client-generated ID if server didn't return one
+      if (!this.state.roomId) {
+        this.state.roomId = this.generateRoomId();
+      }
+
       this.state.isHost = true;
-      
-      // Update UI with room ID
+
+      // Update UI with room ID and share link
       this.uiManager.setRoomId(this.state.roomId);
       this.uiManager.updateShareLink(this.state.roomId);
-      
-      // Prepare for meeting
+
+      // Prepare for meeting (enumerate devices, preview)
       await this.prepareForMeeting();
+
+      // Auto-join as host so link becomes active immediately
+      await this.joinMeeting();
     } catch (error) {
       console.error('Error creating meeting:', error);
       this.uiManager.showError('Error', 'Failed to create meeting. Please try again.');
