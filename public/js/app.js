@@ -181,64 +181,76 @@ class App {
     try {
       let roomId = null;
       
-      // Try to parse as full URL first
+      // Try parsing as full URL first
       try {
-        const url = new URL(link, window.location.origin);
+        // Handle both absolute URLs and relative URLs
+        const url = link.includes('://') 
+          ? new URL(link) 
+          : new URL(link, window.location.origin);
         roomId = url.searchParams.get('room');
       } catch (e) {
-        // If not a valid URL, treat as room code directly
-        roomId = null;
+        console.log('Not a valid URL, trying as room code');
       }
       
-      // If not found in URL params, treat link as room code
-      if (!roomId && link.length === 8 && link === link.toUpperCase()) {
-        roomId = link;
+      // If not found in URL params, treat link as room code directly
+      if (!roomId) {
+        // Accept 8-character room codes (case-insensitive)
+        if (/^[A-Za-z0-9]{8}$/.test(link)) {
+          roomId = link.toUpperCase();
+        }
       }
       
       if (!roomId) {
-        throw new Error('Invalid meeting link format');
+        throw new Error('Invalid meeting link format. Please paste a valid link or 8-digit code.');
       }
 
       this.state.roomId = roomId;
       this.prepareForMeeting();
     } catch (error) {
       console.error('Error parsing link:', error);
-      this.uiManager.showSetupError('Invalid meeting link. Paste the full link or 8-digit code.');
+      this.uiManager.showSetupError(error.message || 'Invalid meeting link. Paste the full link or 8-digit code.');
     }
   }
 
   async prepareForMeeting() {
     try {
-      this.uiManager.showLoading('Getting devices...');
+      this.uiManager.showLoading('Preparing meeting...');
       
-      // Enumerate devices
-      await this.mediaManager.enumerateDevices();
-      this.uiManager.populateDeviceSelects(this.mediaManager.devices);
+      // Enumerate devices first
+      try {
+        await this.mediaManager.enumerateDevices();
+        this.uiManager.populateDeviceSelects(this.mediaManager.devices);
+      } catch (error) {
+        console.warn('Could not enumerate devices:', error);
+      }
 
       // Get initial stream
-      const stream = await this.mediaManager.getLocalStream();
-      this.state.localStream = stream;
-      this.uiManager.updateVideoPreview(stream);
+      try {
+        const stream = await this.mediaManager.getLocalStream();
+        this.state.localStream = stream;
+        this.uiManager.updateVideoPreview(stream);
+      } catch (error) {
+        console.warn('Could not get camera stream (will continue without video):', error);
+        // Don't fail completely - user can still join without camera
+        this.uiManager.showSetupError('⚠️ Camera/microphone access denied. You can still join as audio/text only.');
+      }
 
       // Show setup page
       this.uiManager.showPage('setup');
       this.uiManager.hideLoading();
       
       // Set button states
-      this.uiManager.setSetupCameraButtonState(true);
-      this.uiManager.setSetupMicButtonState(true);
+      if (this.state.localStream) {
+        this.uiManager.setSetupCameraButtonState(true);
+        this.uiManager.setSetupMicButtonState(true);
+      } else {
+        this.uiManager.setSetupCameraButtonState(false);
+        this.uiManager.setSetupMicButtonState(false);
+      }
     } catch (error) {
       console.error('Error preparing for meeting:', error);
-      
-      let errorMessage = 'Failed to access camera/microphone. ';
-      if (error.name === 'NotAllowedError') {
-        errorMessage += 'Please allow access to your camera and microphone.';
-      } else if (error.name === 'NotFoundError') {
-        errorMessage += 'No camera or microphone found.';
-      }
-      
-      this.uiManager.showError('Device Access Error', errorMessage);
       this.uiManager.hideLoading();
+      this.uiManager.showError('Setup Error', 'Failed to prepare meeting. Please check your browser permissions and try again.');
     }
   }
 
@@ -247,6 +259,11 @@ class App {
       const username = this.uiManager.getUsername();
       if (!username) {
         this.uiManager.showSetupError('Please enter your name');
+        return;
+      }
+
+      if (!this.state.roomId) {
+        this.uiManager.showSetupError('Room ID missing. Please try again.');
         return;
       }
 
@@ -265,8 +282,10 @@ class App {
         userId: this.state.userId
       });
 
-      // Add local stream to UI
-      this.uiManager.addLocalStream(this.state.localStream, this.state.username);
+      // Add local stream to UI if available
+      if (this.state.localStream) {
+        this.uiManager.addLocalStream(this.state.localStream, this.state.username);
+      }
 
       // Update button states
       this.updateMediaButtonStates();
