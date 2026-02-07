@@ -2,11 +2,14 @@
 class UIManager {
   constructor() {
     this.remoteStreams = new Map();
+    this.participants = new Map();
     this.currentPage = 'landing';
     this.isChatOpen = false;
-    this.messageCount = 0;
-    this.activeSpeaker = null;
-    this.usernames = new Map();
+    this.isParticipantsOpen = false;
+    this.unreadMessages = 0;
+    this.meetingStartTime = null;
+    this.meetingTimer = null;
+    this.activeSpeakerId = null;
   }
 
   // ==================== PAGE MANAGEMENT ====================
@@ -26,252 +29,391 @@ class UIManager {
   }
 
   showLoading(text = 'Loading...') {
-    document.getElementById('loading-overlay').classList.remove('hidden');
-    document.getElementById('loading-text').textContent = text;
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingText = document.getElementById('loading-text');
+    
+    loadingText.textContent = text;
+    loadingOverlay.classList.remove('hidden');
   }
 
   hideLoading() {
     document.getElementById('loading-overlay').classList.add('hidden');
   }
 
+  showNotification(message, type = 'info', duration = 5000) {
+    const notificationArea = document.getElementById('notification-area');
+    
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.innerHTML = `
+      <div class="notification-content">
+        <i class="fas fa-${this.getNotificationIcon(type)}"></i>
+        <span>${message}</span>
+      </div>
+    `;
+    
+    notificationArea.appendChild(notification);
+    
+    // Auto remove after duration
+    setTimeout(() => {
+      notification.remove();
+    }, duration);
+    
+    return notification;
+  }
+
+  getNotificationIcon(type) {
+    switch(type) {
+      case 'success': return 'check-circle';
+      case 'error': return 'exclamation-circle';
+      case 'warning': return 'exclamation-triangle';
+      default: return 'info-circle';
+    }
+  }
+
+  showModal(modalId) {
+    const modal = document.getElementById(modalId);
+    const overlay = document.getElementById('modal-overlay');
+    
+    if (modal && overlay) {
+      overlay.classList.remove('hidden');
+      modal.classList.remove('hidden');
+    }
+  }
+
+  hideModal(modalId) {
+    const modal = document.getElementById(modalId);
+    const overlay = document.getElementById('modal-overlay');
+    
+    if (modal && overlay) {
+      overlay.classList.add('hidden');
+      modal.classList.add('hidden');
+    }
+  }
+
   showError(title, message) {
     document.getElementById('error-title').textContent = title;
-    document.getElementById('error-text').textContent = message;
-    document.getElementById('error-modal').classList.remove('hidden');
+    document.getElementById('error-message').textContent = message;
+    this.showModal('error-modal');
   }
 
   hideError() {
-    document.getElementById('error-modal').classList.add('hidden');
-  }
-
-  showToast(message, duration = 3000) {
-    const toast = document.getElementById('meeting-toast');
-    document.getElementById('toast-message').textContent = message;
-    toast.classList.remove('hidden');
-
-    setTimeout(() => {
-      toast.classList.add('hidden');
-    }, duration);
+    this.hideModal('error-modal');
   }
 
   // ==================== SETUP PAGE ====================
   populateDeviceSelects(devices) {
     const cameraSelect = document.getElementById('camera-select');
     const micSelect = document.getElementById('microphone-select');
-
-    // Populate cameras
+    
+    // Clear existing options
     cameraSelect.innerHTML = '';
-    devices.videoinput.forEach(device => {
-      const option = document.createElement('option');
-      option.value = device.deviceId;
-      option.textContent = device.label || `Camera ${devices.videoinput.indexOf(device) + 1}`;
-      cameraSelect.appendChild(option);
-    });
-
-    // Populate mics
     micSelect.innerHTML = '';
-    devices.audioinput.forEach(device => {
+    
+    // Add camera options
+    if (devices.videoinput.length === 0) {
       const option = document.createElement('option');
-      option.value = device.deviceId;
-      option.textContent = device.label || `Microphone ${devices.audioinput.indexOf(device) + 1}`;
+      option.textContent = 'No cameras found';
+      option.disabled = true;
+      cameraSelect.appendChild(option);
+    } else {
+      devices.videoinput.forEach((device, index) => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.textContent = device.label || `Camera ${index + 1}`;
+        cameraSelect.appendChild(option);
+      });
+    }
+    
+    // Add microphone options
+    if (devices.audioinput.length === 0) {
+      const option = document.createElement('option');
+      option.textContent = 'No microphones found';
+      option.disabled = true;
       micSelect.appendChild(option);
-    });
+    } else {
+      devices.audioinput.forEach((device, index) => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.textContent = device.label || `Microphone ${index + 1}`;
+        micSelect.appendChild(option);
+      });
+    }
   }
 
   updateVideoPreview(stream) {
     const video = document.getElementById('setup-video');
-    video.srcObject = stream;
+    if (video) {
+      video.srcObject = stream;
+    }
   }
 
-  getSelectedDevices() {
-    return {
-      videoDeviceId: document.getElementById('camera-select').value,
-      audioDeviceId: document.getElementById('microphone-select').value
-    };
+  setRoomId(roomId) {
+    const roomIdDisplay = document.getElementById('room-id-display');
+    if (roomIdDisplay) {
+      roomIdDisplay.textContent = roomId;
+    }
   }
 
-  getUsername() {
-    return document.getElementById('username-input').value.trim() || 'Guest';
+  updateShareLink(roomId) {
+    const shareInput = document.getElementById('share-link-input');
+    const inviteLink = document.getElementById('invite-link');
+    
+    const link = this.generateMeetingLink(roomId);
+    
+    if (shareInput) shareInput.value = link;
+    if (inviteLink) inviteLink.value = link;
   }
 
-  // ==================== VIDEO GRID ====================
+  // ==================== MEETING PAGE ====================
   addLocalStream(stream, username) {
     const videoGrid = document.getElementById('video-grid');
     
     // Remove existing local video if any
-    const existingLocal = document.getElementById('local-video');
+    const existingLocal = document.getElementById('local-video-tile');
     if (existingLocal) {
       existingLocal.remove();
     }
+    
+    const tile = this.createVideoTile('local', stream, username, true);
+    videoGrid.appendChild(tile);
+    
+    // Add to participants list
+    this.addParticipant('local', username, true, true, true);
+  }
 
+  addRemoteStream(peerId, stream, username = 'Guest') {
+    const videoGrid = document.getElementById('video-grid');
+    
+    // Remove existing remote video if any
+    const existingRemote = document.getElementById(`remote-video-tile-${peerId}`);
+    if (existingRemote) {
+      existingRemote.remove();
+    }
+    
+    const tile = this.createVideoTile(peerId, stream, username, false);
+    tile.id = `remote-video-tile-${peerId}`;
+    videoGrid.appendChild(tile);
+    
+    // Add to participants list
+    this.addParticipant(peerId, username, false, true, true);
+    
+    this.remoteStreams.set(peerId, { stream, username });
+  }
+
+  createVideoTile(id, stream, username, isLocal) {
     const tile = document.createElement('div');
-    tile.id = 'local-video';
-    tile.className = 'video-tile small';
-
+    tile.className = 'video-tile';
+    
     const video = document.createElement('video');
     video.srcObject = stream;
     video.autoplay = true;
-    video.muted = true;
     video.playsinline = true;
-
+    video.muted = isLocal;
+    
     const overlay = document.createElement('div');
     overlay.className = 'video-tile-overlay';
-    overlay.innerHTML = `
-      <span class="media-indicator">
-        <span class="media-badge"></span>
-        ${username} (You)
-      </span>
+    
+    const userNameSpan = document.createElement('span');
+    userNameSpan.className = 'user-name';
+    userNameSpan.innerHTML = `
+      <i class="fas fa-user"></i>
+      ${username} ${isLocal ? '(You)' : ''}
     `;
-
+    
+    const mediaIndicator = document.createElement('div');
+    mediaIndicator.className = 'media-indicator';
+    mediaIndicator.id = `media-indicator-${id}`;
+    mediaIndicator.innerHTML = `
+      <i class="fas fa-microphone"></i>
+      <i class="fas fa-video"></i>
+    `;
+    
+    overlay.appendChild(userNameSpan);
+    overlay.appendChild(mediaIndicator);
+    
     tile.appendChild(video);
     tile.appendChild(overlay);
-    videoGrid.appendChild(tile);
-
-    this.usernames.set('local', { username, socketId: 'local' });
-  }
-
-  addRemoteStream(peerId, stream, username = 'User') {
-    const videoGrid = document.getElementById('video-grid');
-
-    // Check if tile already exists
-    let tile = document.getElementById(`remote-video-${peerId}`);
-    if (!tile) {
-      tile = document.createElement('div');
-      tile.id = `remote-video-${peerId}`;
-      tile.className = 'video-tile';
-
-      const video = document.createElement('video');
-      video.id = `remote-video-element-${peerId}`;
-      video.autoplay = true;
-      video.playsinline = true;
-
-      const overlay = document.createElement('div');
-      overlay.className = 'video-tile-overlay';
-      overlay.id = `overlay-${peerId}`;
-      overlay.innerHTML = `
-        <span class="media-indicator">
-          <span class="media-badge"></span>
-          <span class="username">${username}</span>
-        </span>
-      `;
-
-      tile.appendChild(video);
-      tile.appendChild(overlay);
-      videoGrid.appendChild(tile);
-    }
-
-    // Update video stream
-    const videoElement = document.getElementById(`remote-video-element-${peerId}`);
-    if (videoElement) {
-      videoElement.srcObject = stream;
-    }
-
-    this.remoteStreams.set(peerId, { stream, username });
-    this.updateActiveSpeaker(peerId, username);
+    
+    return tile;
   }
 
   removeRemoteStream(peerId) {
-    const tile = document.getElementById(`remote-video-${peerId}`);
+    const tile = document.getElementById(`remote-video-tile-${peerId}`);
     if (tile) {
       tile.remove();
     }
+    
+    this.removeParticipant(peerId);
     this.remoteStreams.delete(peerId);
+  }
 
-    // Clear active speaker if it was this user
-    if (this.activeSpeaker === peerId) {
-      this.activeSpeaker = null;
-      document.getElementById('active-speaker-info').classList.add('hidden');
+  updateMediaIndicator(peerId, mediaState) {
+    const indicator = document.getElementById(`media-indicator-${peerId}`);
+    if (indicator) {
+      const micIcon = indicator.querySelector('.fa-microphone');
+      const videoIcon = indicator.querySelector('.fa-video');
+      
+      if (micIcon) {
+        micIcon.style.color = mediaState.microphone ? 'white' : 'var(--danger)';
+      }
+      if (videoIcon) {
+        videoIcon.style.color = mediaState.camera ? 'white' : 'var(--danger)';
+      }
     }
   }
 
-  updateActiveSpeaker(peerId, username) {
-    // Simple active speaker detection (could be enhanced with volume analysis)
-    if (this.activeSpeaker !== peerId) {
-      this.activeSpeaker = peerId;
-      const speakerInfo = document.getElementById('active-speaker-info');
-      document.getElementById('speaker-name').textContent = username;
-      speakerInfo.classList.remove('hidden');
+  setActiveSpeaker(peerId, username) {
+    if (this.activeSpeakerId !== peerId) {
+      this.activeSpeakerId = peerId;
+      
+      const activeSpeaker = document.getElementById('active-speaker');
+      const speakerName = document.getElementById('active-speaker-name');
+      
+      if (activeSpeaker && speakerName) {
+        speakerName.textContent = username;
+        activeSpeaker.classList.remove('hidden');
+      }
     }
   }
 
-  // ==================== MEDIA CONTROLS ====================
-  setMicButtonState(enabled) {
-    const btn = document.getElementById('btn-toggle-mic');
-    if (enabled) {
-      btn.classList.remove('muted');
-      btn.classList.add('active');
-      btn.title = 'Mute microphone';
-    } else {
-      btn.classList.add('muted');
-      btn.classList.remove('active');
-      btn.title = 'Unmute microphone';
+  clearActiveSpeaker() {
+    this.activeSpeakerId = null;
+    document.getElementById('active-speaker').classList.add('hidden');
+  }
+
+  // ==================== PARTICIPANTS MANAGEMENT ====================
+  addParticipant(id, username, isLocal = false, isAudioOn = true, isVideoOn = true) {
+    const participant = {
+      id,
+      username,
+      isLocal,
+      isAudioOn,
+      isVideoOn,
+      joinedAt: new Date()
+    };
+    
+    this.participants.set(id, participant);
+    this.updateParticipantsList();
+    this.updateParticipantCount();
+  }
+
+  removeParticipant(id) {
+    this.participants.delete(id);
+    this.updateParticipantsList();
+    this.updateParticipantCount();
+  }
+
+  updateParticipantMedia(id, mediaState) {
+    const participant = this.participants.get(id);
+    if (participant) {
+      participant.isAudioOn = mediaState.microphone;
+      participant.isVideoOn = mediaState.camera;
+      this.updateParticipantsList();
     }
   }
 
-  setCameraButtonState(enabled) {
-    const btn = document.getElementById('btn-toggle-camera');
-    if (enabled) {
-      btn.classList.remove('muted');
-      btn.classList.add('active');
-      btn.title = 'Turn camera off';
-    } else {
-      btn.classList.add('muted');
-      btn.classList.remove('active');
-      btn.title = 'Turn camera on';
-    }
+  updateParticipantsList() {
+    const participantsList = document.getElementById('participants-list');
+    if (!participantsList) return;
+    
+    participantsList.innerHTML = '';
+    
+    this.participants.forEach((participant, id) => {
+      const item = document.createElement('div');
+      item.className = 'participant-item';
+      
+      const avatar = participant.username.charAt(0).toUpperCase();
+      
+      item.innerHTML = `
+        <div class="participant-avatar">${avatar}</div>
+        <div class="participant-info">
+          <div class="participant-name">
+            ${participant.username} ${participant.isLocal ? '(You)' : ''}
+          </div>
+          <div class="participant-role">
+            ${participant.isLocal ? 'Host' : 'Participant'}
+          </div>
+        </div>
+        <div class="participant-status">
+          <i class="fas fa-microphone ${participant.isAudioOn ? 'active' : 'muted'}"></i>
+          <i class="fas fa-video ${participant.isVideoOn ? 'active' : 'muted'}"></i>
+        </div>
+      `;
+      
+      participantsList.appendChild(item);
+    });
   }
 
-  setSetupMicButtonState(enabled) {
-    const btn = document.getElementById('toggle-mic-setup');
-    if (enabled) {
-      btn.classList.add('btn-active');
-      btn.classList.remove('btn-inactive');
-      btn.querySelector('.label').textContent = 'Mic On';
-    } else {
-      btn.classList.remove('btn-active');
-      btn.classList.add('btn-inactive');
-      btn.querySelector('.label').textContent = 'Mic Off';
-    }
-  }
-
-  setSetupCameraButtonState(enabled) {
-    const btn = document.getElementById('toggle-camera-setup');
-    if (enabled) {
-      btn.classList.add('btn-active');
-      btn.classList.remove('btn-inactive');
-      btn.querySelector('.label').textContent = 'Camera On';
-    } else {
-      btn.classList.remove('btn-active');
-      btn.classList.add('btn-inactive');
-      btn.querySelector('.label').textContent = 'Camera Off';
-    }
+  updateParticipantCount() {
+    const count = this.participants.size;
+    
+    const countElements = [
+      document.getElementById('participant-count'),
+      document.getElementById('participants-count'),
+      document.getElementById('participants-badge')
+    ];
+    
+    countElements.forEach(element => {
+      if (element) element.textContent = count;
+    });
   }
 
   // ==================== CHAT ====================
-  toggleChat(show) {
+  toggleChat(forceOpen) {
     const chatPanel = document.getElementById('chat-panel');
-    if (show) {
+    
+    if (forceOpen !== undefined) {
+      this.isChatOpen = forceOpen;
+    } else {
+      this.isChatOpen = !this.isChatOpen;
+    }
+    
+    if (this.isChatOpen) {
       chatPanel.classList.remove('hidden');
-      this.isChatOpen = true;
-      this.messageCount = 0;
-      this.updateChatBadge();
+      this.unreadMessages = 0;
+      this.updateChatNotification();
     } else {
       chatPanel.classList.add('hidden');
-      this.isChatOpen = false;
+    }
+  }
+
+  toggleParticipants(forceOpen) {
+    const participantsPanel = document.getElementById('participants-panel');
+    
+    if (forceOpen !== undefined) {
+      this.isParticipantsOpen = forceOpen;
+    } else {
+      this.isParticipantsOpen = !this.isParticipantsOpen;
+    }
+    
+    if (this.isParticipantsOpen) {
+      participantsPanel.classList.remove('hidden');
+    } else {
+      participantsPanel.classList.add('hidden');
     }
   }
 
   addChatMessage(username, message, timestamp, isOwn = false) {
     const messagesContainer = document.getElementById('chat-messages');
-
+    
+    // Remove welcome message if it exists
+    const welcomeMessage = messagesContainer.querySelector('.welcome-message');
+    if (welcomeMessage) {
+      welcomeMessage.remove();
+    }
+    
     const messageDiv = document.createElement('div');
     messageDiv.className = `chat-message ${isOwn ? 'own' : ''}`;
-
+    
     const time = timestamp ? new Date(timestamp).toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit'
-    }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
+    }) : new Date().toLocaleTimeString([], { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+    
     messageDiv.innerHTML = `
       <div class="chat-message-header">
         <span class="chat-message-username">${username}</span>
@@ -279,66 +421,191 @@ class UIManager {
       </div>
       <div class="chat-message-text">${this.escapeHtml(message)}</div>
     `;
-
+    
     messagesContainer.appendChild(messageDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
-
-    // Increment badge if chat not open
-    if (!this.isChatOpen) {
-      this.messageCount++;
-      this.updateChatBadge();
+    
+    // Increment unread messages if chat is not open
+    if (!this.isChatOpen && !isOwn) {
+      this.unreadMessages++;
+      this.updateChatNotification();
     }
   }
 
-  updateChatBadge() {
-    const badge = document.getElementById('chat-notification-badge');
-    if (this.messageCount > 0) {
-      badge.textContent = this.messageCount;
-      badge.classList.remove('hidden');
-    } else {
-      badge.classList.add('hidden');
+  updateChatNotification() {
+    const badge = document.getElementById('chat-notification');
+    if (badge) {
+      if (this.unreadMessages > 0) {
+        badge.textContent = this.unreadMessages;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
     }
+  }
+
+  // ==================== MEDIA CONTROLS ====================
+  setMicButtonState(enabled) {
+    const btn = document.getElementById('btn-toggle-mic');
+    const label = btn.querySelector('.control-label');
+    
+    if (enabled) {
+      btn.classList.add('btn-control-active');
+      label.textContent = 'Mute';
+      btn.title = 'Mute microphone';
+    } else {
+      btn.classList.remove('btn-control-active');
+      label.textContent = 'Unmute';
+      btn.title = 'Unmute microphone';
+    }
+  }
+
+  setCameraButtonState(enabled) {
+    const btn = document.getElementById('btn-toggle-camera');
+    const label = btn.querySelector('.control-label');
+    
+    if (enabled) {
+      btn.classList.add('btn-control-active');
+      label.textContent = 'Stop Video';
+      btn.title = 'Turn camera off';
+    } else {
+      btn.classList.remove('btn-control-active');
+      label.textContent = 'Start Video';
+      btn.title = 'Turn camera on';
+    }
+  }
+
+  setSetupCameraButtonState(enabled) {
+    const btn = document.getElementById('toggle-camera-setup');
+    
+    if (enabled) {
+      btn.classList.add('btn-control-active');
+      btn.title = 'Turn camera off';
+    } else {
+      btn.classList.remove('btn-control-active');
+      btn.title = 'Turn camera on';
+    }
+  }
+
+  setSetupMicButtonState(enabled) {
+    const btn = document.getElementById('toggle-mic-setup');
+    
+    if (enabled) {
+      btn.classList.add('btn-control-active');
+      btn.title = 'Mute microphone';
+    } else {
+      btn.classList.remove('btn-control-active');
+      btn.title = 'Unmute microphone';
+    }
+  }
+
+  // ==================== MEETING TIMER ====================
+  startMeetingTimer() {
+    this.meetingStartTime = new Date();
+    
+    this.meetingTimer = setInterval(() => {
+      this.updateMeetingTimer();
+    }, 1000);
+  }
+
+  stopMeetingTimer() {
+    if (this.meetingTimer) {
+      clearInterval(this.meetingTimer);
+      this.meetingTimer = null;
+    }
+  }
+
+  updateMeetingTimer() {
+    if (!this.meetingStartTime) return;
+    
+    const now = new Date();
+    const diff = Math.floor((now - this.meetingStartTime) / 1000);
+    
+    const hours = Math.floor(diff / 3600);
+    const minutes = Math.floor((diff % 3600) / 60);
+    const seconds = diff % 60;
+    
+    const timerElement = document.getElementById('meeting-timer');
+    if (timerElement) {
+      if (hours > 0) {
+        timerElement.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      } else {
+        timerElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      }
+    }
+  }
+
+  // ==================== UTILITIES ====================
+  generateMeetingLink(roomId) {
+    const baseUrl = window.location.origin;
+    return `${baseUrl}/room/${roomId}`;
+  }
+
+  async copyToClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      this.showNotification('Copied to clipboard!', 'success');
+      return true;
+    } catch (error) {
+      console.error('Failed to copy:', error);
+      this.showNotification('Failed to copy to clipboard', 'error');
+      return false;
+    }
+  }
+
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  getUsername() {
+    const input = document.getElementById('username-input');
+    return input ? input.value.trim() || 'Guest' : 'Guest';
   }
 
   getChatInput() {
-    return document.getElementById('chat-input').value.trim();
+    const input = document.getElementById('chat-input');
+    return input ? input.value.trim() : '';
   }
 
   clearChatInput() {
-    document.getElementById('chat-input').value = '';
+    const input = document.getElementById('chat-input');
+    if (input) input.value = '';
   }
 
-  // ==================== MEETING LINK ====================
-  getMeetingLink(roomId) {
-    const baseUrl = window.location.origin;
-    return `${baseUrl}?room=${roomId}`;
+  getSelectedCamera() {
+    const select = document.getElementById('camera-select');
+    return select ? select.value : null;
   }
 
-  copyToClipboard(text) {
-    navigator.clipboard.writeText(text).then(() => {
-      const notification = document.getElementById('copy-notification');
-      notification.classList.remove('hidden');
-      setTimeout(() => {
-        notification.classList.add('hidden');
-      }, 2000);
-    });
+  getSelectedMicrophone() {
+    const select = document.getElementById('microphone-select');
+    return select ? select.value : null;
   }
 
-  showMeetingLink(roomId) {
-    const link = this.getMeetingLink(roomId);
-    this.showToast(`Meeting link: ${link}`, 5000);
-    this.copyToClipboard(link);
-  }
-
-  // ==================== ERROR HANDLING ====================
-  showSetupError(message) {
-    const errorDiv = document.getElementById('setup-error');
-    errorDiv.textContent = message;
-    errorDiv.classList.remove('hidden');
-
-    setTimeout(() => {
-      errorDiv.classList.add('hidden');
-    }, 5000);
+  // ==================== CLEANUP ====================
+  clearAll() {
+    // Clear video grid
+    const videoGrid = document.getElementById('video-grid');
+    if (videoGrid) videoGrid.innerHTML = '';
+    
+    // Clear chat
+    const chatMessages = document.getElementById('chat-messages');
+    if (chatMessages) chatMessages.innerHTML = '';
+    
+    // Clear participants
+    const participantsList = document.getElementById('participants-list');
+    if (participantsList) participantsList.innerHTML = '';
+    
+    // Reset state
+    this.remoteStreams.clear();
+    this.participants.clear();
+    this.unreadMessages = 0;
+    this.activeSpeakerId = null;
+    
+    // Stop timer
+    this.stopMeetingTimer();
   }
 
   // ==================== FULLSCREEN ====================
@@ -348,31 +615,15 @@ class UIManager {
     if (!document.fullscreenElement) {
       elem.requestFullscreen().catch(err => {
         console.error(`Error attempting to enable fullscreen: ${err.message}`);
+        this.showNotification('Failed to enter fullscreen', 'error');
       });
     } else {
       document.exitFullscreen();
     }
   }
+}
 
-  // ==================== UTILITY ====================
-  escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  clearAllRemoteStreams() {
-    this.remoteStreams.forEach((_, peerId) => {
-      this.removeRemoteStream(peerId);
-    });
-  }
-
-  clearChat() {
-    document.getElementById('chat-messages').innerHTML = '';
-  }
-
-  // Generate temporary user ID
-  generateUserId() {
-    return `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
+// Export for ES6 modules
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = UIManager;
 }

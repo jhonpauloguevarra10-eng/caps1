@@ -10,7 +10,9 @@ const io = socketIO(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
-  }
+  },
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
 
 // Serve static files
@@ -25,9 +27,9 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-// Handle room parameter in URL
+// Room-specific URL
 app.get('/room/:roomId', (req, res) => {
-  res.redirect(`/?room=${req.params.roomId}`);
+  res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
 // API endpoint to create meeting
@@ -35,8 +37,10 @@ app.get('/api/create-meeting', (req, res) => {
   const meetingId = uuidv4().substring(0, 8).toUpperCase();
   meetings.set(meetingId, {
     id: meetingId,
+    host: null,
     createdAt: new Date(),
-    participants: []
+    participants: new Map(),
+    isActive: true
   });
   res.json({ meetingId });
 });
@@ -45,19 +49,46 @@ app.get('/api/create-meeting', (req, res) => {
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
-  // User joins a meeting
-  socket.on('join-meeting', (data) => {
-    const { roomId, username, userId } = data;
+  // Create or join room
+  socket.on('join-room', async (data) => {
+    const { roomId, username, userId, isHost = false } = data;
     
-    // Validate meeting exists or create if joining via link
+    console.log(`User ${username} (${socket.id}) joining room ${roomId}, host: ${isHost}`);
+    
+    // Validate or create room
     if (!meetings.has(roomId)) {
-      meetings.set(roomId, {
-        id: roomId,
-        createdAt: new Date(),
-        participants: []
-      });
+      if (isHost) {
+        // Host creating a new room
+        meetings.set(roomId, {
+          id: roomId,
+          host: socket.id,
+          createdAt: new Date(),
+          participants: new Map(),
+          isActive: true
+        });
+        console.log(`New room created: ${roomId} by ${username}`);
+      } else {
+        // User trying to join non-existent room
+        socket.emit('room-error', { message: 'Room does not exist' });
+        return;
+      }
     }
 
+    const meeting = meetings.get(roomId);
+    
+    // Check if room is active
+    if (!meeting.isActive) {
+      socket.emit('room-error', { message: 'Meeting has ended' });
+      return;
+    }
+
+    // Check if user is already in the room
+    if (meeting.participants.has(socket.id)) {
+      socket.emit('room-error', { message: 'Already in this meeting' });
+      return;
+    }
+
+    // Join socket room
     socket.join(roomId);
     
     // Store user info
@@ -66,57 +97,100 @@ io.on('connection', (socket) => {
       username,
       userId,
       roomId,
-      joinedAt: new Date()
+      joinedAt: new Date(),
+      isHost
     });
 
     // Add to meeting participants
-    const meeting = meetings.get(roomId);
-    meeting.participants.push({
+    meeting.participants.set(socket.id, {
+      socketId: socket.id,
+      username,
+      userId,
+      joinedAt: new Date(),
+      mediaState: {
+        camera: true,
+        microphone: true,
+        screenShare: false
+      }
+    });
+
+    // Update host if this is the first participant
+    if (meeting.participants.size === 1) {
+      meeting.host = socket.id;
+      users.get(socket.id).isHost = true;
+    }
+
+    // Notify the user
+    socket.emit('room-joined', {
+      roomId,
+      participants: Array.from(meeting.participants.values()).map(p => ({
+        socketId: p.socketId,
+        username: p.username,
+        userId: p.userId
+      })),
+      isHost: users.get(socket.id).isHost
+    });
+
+    // Notify others in the room
+    socket.to(roomId).emit('user-joined', {
       socketId: socket.id,
       username,
       userId
     });
 
-    // Notify others in room
-    socket.broadcast.to(roomId).emit('user-joined', {
-      socketId: socket.id,
-      username,
-      userId
-    });
+    // Send existing users to the new joiner
+    const existingUsers = Array.from(meeting.participants.values())
+      .filter(p => p.socketId !== socket.id)
+      .map(p => ({
+        socketId: p.socketId,
+        username: p.username,
+        userId: p.userId
+      }));
+    
+    if (existingUsers.length > 0) {
+      socket.emit('existing-users', existingUsers);
+    }
 
-    // Send existing users to new joiner
-    io.to(socket.id).emit('existing-users', 
-      meeting.participants.filter(p => p.socketId !== socket.id)
-    );
-
-    console.log(`${username} joined meeting ${roomId}`);
+    console.log(`${username} joined meeting ${roomId} (Total: ${meeting.participants.size})`);
   });
 
   // WebRTC Signaling - SDP Offer
   socket.on('send-offer', (data) => {
     const { to, offer } = data;
-    io.to(to).emit('receive-offer', {
-      from: socket.id,
-      offer
-    });
+    console.log(`Offer from ${socket.id} to ${to}`);
+    
+    if (io.sockets.sockets.has(to)) {
+      io.to(to).emit('receive-offer', {
+        from: socket.id,
+        offer
+      });
+    }
   });
 
   // WebRTC Signaling - SDP Answer
   socket.on('send-answer', (data) => {
     const { to, answer } = data;
-    io.to(to).emit('receive-answer', {
-      from: socket.id,
-      answer
-    });
+    console.log(`Answer from ${socket.id} to ${to}`);
+    
+    if (io.sockets.sockets.has(to)) {
+      io.to(to).emit('receive-answer', {
+        from: socket.id,
+        answer
+      });
+    }
   });
 
   // WebRTC Signaling - ICE Candidates
   socket.on('send-ice-candidate', (data) => {
     const { to, candidate } = data;
-    io.to(to).emit('receive-ice-candidate', {
-      from: socket.id,
-      candidate
-    });
+    console.log(`ICE candidate from ${socket.id} to ${to}`);
+    
+    if (io.sockets.sockets.has(to)) {
+      io.to(to).emit('receive-ice-candidate', {
+        from: socket.id,
+        candidate
+      });
+    }
   });
 
   // Chat messages
@@ -125,13 +199,15 @@ io.on('connection', (socket) => {
     const user = users.get(socket.id);
     
     if (user && user.roomId === roomId) {
+      const timestamp = new Date();
+      console.log(`Chat in ${roomId}: ${username}: ${message}`);
+      
       io.to(roomId).emit('receive-message', {
         username,
         message,
-        timestamp: new Date(),
+        timestamp,
         socketId: socket.id
       });
-      console.log(`Chat in ${roomId}: ${username}: ${message}`);
     }
   });
 
@@ -141,78 +217,140 @@ io.on('connection', (socket) => {
     const user = users.get(socket.id);
     
     if (user && user.roomId === roomId) {
-      socket.broadcast.to(roomId).emit('user-media-state', {
+      // Update user's media state
+      const meeting = meetings.get(roomId);
+      if (meeting && meeting.participants.has(socket.id)) {
+        meeting.participants.get(socket.id).mediaState = mediaState;
+      }
+      
+      // Broadcast to others in room
+      socket.to(roomId).emit('user-media-state', {
         socketId: socket.id,
         mediaState
       });
     }
   });
 
-  // User leaves
-  socket.on('leave-meeting', () => {
+  // Screen share events
+  socket.on('start-screen-share', (data) => {
+    const { roomId, username } = data;
+    socket.to(roomId).emit('screen-share-started', {
+      socketId: socket.id,
+      username
+    });
+  });
+
+  socket.on('stop-screen-share', (data) => {
+    const { roomId, username } = data;
+    socket.to(roomId).emit('screen-share-stopped', {
+      socketId: socket.id,
+      username
+    });
+  });
+
+  // User leaves meeting
+  socket.on('leave-room', (data) => {
+    this.handleUserLeave(socket);
+  });
+
+  // End meeting (host only)
+  socket.on('end-meeting', (data) => {
+    const { roomId } = data;
     const user = users.get(socket.id);
     
-    if (user) {
-      const { roomId, username } = user;
-      
-      socket.broadcast.to(roomId).emit('user-left', {
-        socketId: socket.id,
-        username
-      });
-
-      // Remove from meeting participants
+    if (user && user.isHost && user.roomId === roomId) {
       const meeting = meetings.get(roomId);
       if (meeting) {
-        meeting.participants = meeting.participants.filter(
-          p => p.socketId !== socket.id
-        );
-
-        // Delete meeting if empty
-        if (meeting.participants.length === 0) {
-          meetings.delete(roomId);
-          console.log(`Meeting ${roomId} closed (no participants)`);
-        }
+        // Notify all participants
+        io.to(roomId).emit('meeting-ended', {
+          endedBy: user.username
+        });
+        
+        // Clean up meeting
+        meeting.participants.forEach((participant, participantId) => {
+          if (io.sockets.sockets.has(participantId)) {
+            io.sockets.sockets.get(participantId).leave(roomId);
+          }
+          users.delete(participantId);
+        });
+        
+        meetings.delete(roomId);
+        console.log(`Meeting ${roomId} ended by host`);
       }
-
-      socket.leave(roomId);
-      users.delete(socket.id);
-      console.log(`${username} left meeting ${roomId}`);
     }
   });
 
-  // Disconnect
+  // Disconnect handler
   socket.on('disconnect', () => {
-    const user = users.get(socket.id);
-    
-    if (user) {
-      const { roomId, username } = user;
-      
-      socket.broadcast.to(roomId).emit('user-disconnected', {
-        socketId: socket.id,
-        username
-      });
+    this.handleUserLeave(socket);
+  });
 
-      // Clean up meeting
-      const meeting = meetings.get(roomId);
-      if (meeting) {
-        meeting.participants = meeting.participants.filter(
-          p => p.socketId !== socket.id
-        );
-
-        if (meeting.participants.length === 0) {
-          meetings.delete(roomId);
-        }
-      }
-
-      users.delete(socket.id);
-      console.log(`User disconnected: ${socket.id}`);
-    }
+  // Error handler
+  socket.on('error', (error) => {
+    console.error(`Socket error for ${socket.id}:`, error);
   });
 });
+
+// Helper function to handle user leaving
+function handleUserLeave(socket) {
+  const user = users.get(socket.id);
+  
+  if (user) {
+    const { roomId, username } = user;
+    const meeting = meetings.get(roomId);
+    
+    if (meeting) {
+      // Remove from meeting participants
+      meeting.participants.delete(socket.id);
+      
+      // Notify others
+      socket.to(roomId).emit('user-left', {
+        socketId: socket.id,
+        username
+      });
+      
+      // Handle host leaving
+      if (meeting.host === socket.id && meeting.participants.size > 0) {
+        // Assign new host (first remaining participant)
+        const newHost = Array.from(meeting.participants.keys())[0];
+        meeting.host = newHost;
+        
+        if (users.has(newHost)) {
+          users.get(newHost).isHost = true;
+          io.to(newHost).emit('host-changed', { isHost: true });
+        }
+      }
+      
+      // Clean up empty meeting
+      if (meeting.participants.size === 0) {
+        meetings.delete(roomId);
+        console.log(`Meeting ${roomId} closed (no participants)`);
+      } else {
+        console.log(`${username} left meeting ${roomId} (Remaining: ${meeting.participants.size})`);
+      }
+    }
+    
+    // Clean up user
+    users.delete(socket.id);
+    console.log(`User disconnected: ${socket.id} (${username})`);
+  }
+}
+
+// Attach helper to io object
+io.handleUserLeave = handleUserLeave;
 
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📡 WebSocket ready for connections`);
+});
+
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+  console.log('Shutting down server...');
+  io.close(() => {
+    console.log('WebSocket server closed');
+    process.exit(0);
+  });
 });
