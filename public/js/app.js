@@ -155,22 +155,36 @@ class App {
     // Connection events
     this.socket.on('connect', () => {
       console.log('Connected to server with ID:', this.socket.id);
-      this.uiManager.showNotification('Connected to server', 'success');
     });
 
     this.socket.on('disconnect', (reason) => {
       console.log('Disconnected from server:', reason);
-      this.uiManager.showNotification('Disconnected from server', 'warning');
+      if (this.state.isInMeeting) {
+        this.uiManager.showNotification('Lost connection to server', 'error');
+      }
     });
 
     this.socket.on('connect_error', (error) => {
       console.error('Connection error:', error);
-      this.uiManager.showError('Connection Error', 'Failed to connect to the server. Please check your internet connection.');
+      if (this.state.isInMeeting) {
+        this.uiManager.showError('Connection Error', 'Lost connection. Attempting to reconnect...');
+      }
     });
 
     this.socket.on('reconnect', (attemptNumber) => {
       console.log('Reconnected after', attemptNumber, 'attempts');
-      this.uiManager.showNotification('Reconnected to server', 'success');
+      if (this.state.isInMeeting) {
+        this.uiManager.showNotification('Reconnected!', 'success');
+      }
+    });
+
+    this.socket.on('room-error', (data) => {
+      console.error('Room error:', data.message);
+      this.uiManager.hideLoading();
+      this.uiManager.showError('Cannot Join Meeting', data.message);
+      setTimeout(() => {
+        this.uiManager.showPage('landing');
+      }, 2000);
     });
 
     // Room events
@@ -280,6 +294,7 @@ class App {
     const linkInput = document.getElementById('meeting-link-input');
     linkInput.value = '';
     linkInput.focus();
+    this.uiManager.showNotification('Enter meeting link or code to join', 'info');
   }
 
   async joinFromLink() {
@@ -303,6 +318,10 @@ class App {
         // Query parameter format
         const url = new URL(link.includes('://') ? link : `https://${link}`);
         roomId = url.searchParams.get('room');
+      } else if (link.includes('?') && link.includes('http')) {
+        // Parse URL with query parameters
+        const urlObj = new URL(link);
+        roomId = urlObj.searchParams.get('room');
       } else {
         // Direct room code format (8 characters)
         if (/^[A-Z0-9]{8}$/i.test(link)) {
@@ -311,10 +330,11 @@ class App {
       }
       
       if (!roomId) {
-        throw new Error('Invalid meeting link. Please check the link and try again.');
+        throw new Error('Invalid meeting link format. Use: the full link, room code, or /room/CODE format.');
       }
 
       this.state.roomId = roomId;
+      this.state.isHost = false; // Joining as participant
       await this.prepareForMeeting();
     } catch (error) {
       console.error('Error joining from link:', error);
@@ -329,7 +349,9 @@ class App {
       // Enumerate devices
       try {
         const devices = await this.mediaManager.enumerateDevices();
-        this.uiManager.populateDeviceSelects(devices);
+        if (devices && (devices.videoinput || devices.audioinput)) {
+          this.uiManager.populateDeviceSelects(devices);
+        }
       } catch (error) {
         console.warn('Could not enumerate devices:', error);
       }
@@ -339,25 +361,18 @@ class App {
         const stream = await this.mediaManager.getLocalStream();
         this.state.localStream = stream;
         this.uiManager.updateVideoPreview(stream);
-        
-        // Show setup page
-        this.uiManager.showPage('setup');
-        this.uiManager.hideLoading();
-        
-        // Update UI with meeting link
-        if (this.state.roomId) {
-          this.uiManager.updateShareLink(this.state.roomId);
-        }
       } catch (error) {
-        console.error('Error accessing media devices:', error);
-        this.uiManager.hideLoading();
-        
-        // Show setup page anyway (allow audio/text only)
-        this.uiManager.showPage('setup');
-        
-        if (error.userMessage) {
-          this.uiManager.showError('Media Access Error', error.userMessage);
-        }
+        console.warn('Could not get camera stream - proceeding without video:', error);
+        // Don't fail - user can still join without video
+      }
+      
+      // Show setup page
+      this.uiManager.showPage('setup');
+      this.uiManager.hideLoading();
+      
+      // Update UI with meeting link (for hosts)
+      if (this.state.roomId && this.state.isHost) {
+        this.uiManager.updateShareLink(this.state.roomId);
       }
     } catch (error) {
       console.error('Unexpected error preparing for meeting:', error);
@@ -376,7 +391,7 @@ class App {
       }
 
       if (!this.state.roomId) {
-        this.uiManager.showError('Error', 'Missing room ID. Please try again.');
+        this.uiManager.showError('Error', 'Missing meeting code. Please try again.');
         return;
       }
 
@@ -384,8 +399,15 @@ class App {
 
       this.state.isInMeeting = true;
 
-      // Initialize WebRTC manager
-      this.webrtcManager = new WebRTCManager(this.socket);
+      // Initialize WebRTC manager if not already done
+      if (!this.webrtcManager) {
+        this.webrtcManager = new WebRTCManager(this.socket);
+      }
+
+      // Add local stream to UI first
+      if (this.state.localStream) {
+        this.uiManager.addLocalStream(this.state.localStream, this.state.username);
+      }
 
       // Emit join event
       this.socket.emit('join-room', {
@@ -395,10 +417,10 @@ class App {
         isHost: this.state.isHost
       });
 
-      // Add local stream to UI
-      if (this.state.localStream) {
-        this.uiManager.addLocalStream(this.state.localStream, this.state.username);
-      }
+      // Wait for room-joined confirmation and show meeting page after timeout
+      setTimeout(() => {
+        // Socket event will handle room-joined response
+      }, 100);
 
       // Update media button states
       const mediaState = this.mediaManager.getMediaState();
@@ -667,8 +689,12 @@ class App {
   }
 
   copyInviteLink() {
-    const link = document.getElementById('invite-link').value;
-    this.uiManager.copyToClipboard(link);
+    const linkInput = document.getElementById('invite-link');
+    if (linkInput && linkInput.value) {
+      this.uiManager.copyToClipboard(linkInput.value);
+    } else {
+      this.uiManager.showNotification('No link to copy', 'warning');
+    }
   }
 
   showInviteModal() {

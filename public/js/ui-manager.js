@@ -538,13 +538,26 @@ class UIManager {
   // ==================== UTILITIES ====================
   generateMeetingLink(roomId) {
     const baseUrl = window.location.origin;
-    return `${baseUrl}/room/${roomId}`;
+    // Support both ?room= and /room/ formats
+    return `${baseUrl}/?room=${roomId}`;
   }
 
   async copyToClipboard(text) {
     try {
-      await navigator.clipboard.writeText(text);
-      this.showNotification('Copied to clipboard!', 'success');
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback for older browsers or non-HTTPS
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      this.showNotification('✓ Copied to clipboard!', 'success');
       return true;
     } catch (error) {
       console.error('Failed to copy:', error);

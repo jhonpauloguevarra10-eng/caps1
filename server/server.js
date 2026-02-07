@@ -250,7 +250,47 @@ io.on('connection', (socket) => {
 
   // User leaves meeting
   socket.on('leave-room', (data) => {
-    this.handleUserLeave(socket);
+    const { roomId } = data;
+    const user = users.get(socket.id);
+    
+    if (user && user.roomId === roomId) {
+      const meeting = meetings.get(roomId);
+      if (meeting) {
+        // Remove participant from meeting
+        meeting.participants.delete(socket.id);
+        
+        // Notify others in the room
+        socket.to(roomId).emit('user-left', {
+          socketId: socket.id,
+          username: user.username,
+          participantCount: meeting.participants.size
+        });
+        
+        // If no more participants, deactivate the meeting
+        if (meeting.participants.size === 0) {
+          meeting.isActive = false;
+          meetings.delete(roomId);
+          console.log(`Meeting ${roomId} closed (no participants)`);
+        } else {
+          // Assign new host if needed
+          if (user.isHost && meeting.participants.size > 0) {
+            const firstParticipant = Array.from(meeting.participants.values())[0];
+            meeting.host = firstParticipant.socketId;
+            io.to(roomId).emit('host-changed', {
+              newHostId: firstParticipant.socketId,
+              newHostName: firstParticipant.username
+            });
+          }
+        }
+      }
+      
+      // Remove user from users map
+      users.delete(socket.id);
+      console.log(`${user.username} left meeting ${roomId}`);
+    }
+    
+    // Leave socket room
+    socket.leave(roomId);
   });
 
   // End meeting (host only)
@@ -282,7 +322,45 @@ io.on('connection', (socket) => {
 
   // Disconnect handler
   socket.on('disconnect', () => {
-    this.handleUserLeave(socket);
+    const user = users.get(socket.id);
+    
+    if (user) {
+      const { roomId, username } = user;
+      const meeting = meetings.get(roomId);
+      
+      if (meeting) {
+        // Remove from meeting participants
+        meeting.participants.delete(socket.id);
+        
+        // Notify others
+       socket.to(roomId).emit('user-left', {
+          socketId: socket.id,
+          username
+        });
+        
+        // Handle host leaving
+        if (meeting.host === socket.id && meeting.participants.size > 0) {
+          const newHost = Array.from(meeting.participants.keys())[0];
+          meeting.host = newHost;
+          
+          if (users.has(newHost)) {
+            users.get(newHost).isHost = true;
+            io.to(newHost).emit('host-changed', { isHost: true });
+          }
+        }
+        
+        // Clean up empty meeting
+        if (meeting.participants.size === 0) {
+          meetings.delete(roomId);
+          console.log(`Meeting ${roomId} closed (no participants)`);
+        } else {
+          console.log(`${username} left meeting ${roomId} (Remaining: ${meeting.participants.size})`);
+        }
+      }
+      
+      users.delete(socket.id);
+      console.log(`User disconnected: ${socket.id} (${username})`);
+    }
   });
 
   // Error handler
@@ -290,54 +368,6 @@ io.on('connection', (socket) => {
     console.error(`Socket error for ${socket.id}:`, error);
   });
 });
-
-// Helper function to handle user leaving
-function handleUserLeave(socket) {
-  const user = users.get(socket.id);
-  
-  if (user) {
-    const { roomId, username } = user;
-    const meeting = meetings.get(roomId);
-    
-    if (meeting) {
-      // Remove from meeting participants
-      meeting.participants.delete(socket.id);
-      
-      // Notify others
-      socket.to(roomId).emit('user-left', {
-        socketId: socket.id,
-        username
-      });
-      
-      // Handle host leaving
-      if (meeting.host === socket.id && meeting.participants.size > 0) {
-        // Assign new host (first remaining participant)
-        const newHost = Array.from(meeting.participants.keys())[0];
-        meeting.host = newHost;
-        
-        if (users.has(newHost)) {
-          users.get(newHost).isHost = true;
-          io.to(newHost).emit('host-changed', { isHost: true });
-        }
-      }
-      
-      // Clean up empty meeting
-      if (meeting.participants.size === 0) {
-        meetings.delete(roomId);
-        console.log(`Meeting ${roomId} closed (no participants)`);
-      } else {
-        console.log(`${username} left meeting ${roomId} (Remaining: ${meeting.participants.size})`);
-      }
-    }
-    
-    // Clean up user
-    users.delete(socket.id);
-    console.log(`User disconnected: ${socket.id} (${username})`);
-  }
-}
-
-// Attach helper to io object
-io.handleUserLeave = handleUserLeave;
 
 // Start server
 const PORT = process.env.PORT || 3000;
