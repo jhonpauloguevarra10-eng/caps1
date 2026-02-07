@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Caps Meet — Video Conference</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="app">
+    <aside id="lobby" class="panel">
+      <h1>Caps Meet</h1>
+      <div class="form-group">
+        <input id="nameInput" placeholder="Your name" maxlength="32" />
+      </div>
+      <div class="form-group">
+        <button id="createBtn">Create New Meeting</button>
+      </div>
+      <div class="form-group">
+        <input id="roomInput" placeholder="Enter meeting ID or link" />
+        <button id="joinBtn">Join</button>
+      </div>
+      <p class="small">Open multiple browser windows or share the link to test multi-user.</p>
+    </aside>
+
+    <main id="meeting" class="hidden">
+      <header class="meeting-header">
+        <div class="left">
+          <div id="meetingTitle">Meeting</div>
+          <div id="participantsList" class="participants"></div>
+        </div>
+        <div class="right">
+          <button id="copyLinkBtn">Copy Link</button>
+          <button id="leaveBtn">Leave</button>
+        </div>
+      </header>
+
+      <section id="videos" class="videos-grid"></section>
+
+      <div class="controls">
+        <div class="control-left">
+          <select id="audioSource"></select>
+          <select id="videoSource"></select>
+        </div>
+        <div class="control-center">
+          <button id="muteBtn">Mute</button>
+          <button id="camBtn">Camera Off</button>
+          <button id="fullscreenBtn">Fullscreen</button>
+        </div>
+        <div class="control-right">
+          <button id="chatToggleBtn">Chat</button>
+          <button id="endBtn" class="danger hidden">End Call</button>
+        </div>
+      </div>
+
+      <aside id="chatPanel" class="chat hidden">
+        <div class="chat-header">Chat</div>
+        <div id="chatList" class="chat-list"></div>
+        <form id="chatForm" class="chat-form">
+          <input id="chatInput" autocomplete="off" placeholder="Say something" />
+          <button>Send</button>
+        </form>
+      </aside>
+    </main>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/main.js"></script>
+</body>
+</html>
