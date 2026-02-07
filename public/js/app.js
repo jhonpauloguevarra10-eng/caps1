@@ -181,26 +181,39 @@ class App {
     this.socket.on('room-error', (data) => {
       console.error('Room error:', data.message);
       this.uiManager.hideLoading();
-      this.uiManager.showError('Cannot Join Meeting', data.message);
+      this.state.isInMeeting = false; // Reset meeting state
+      
+      // User-friendly error messages
+      let errorTitle = 'Cannot Join Meeting';
+      let errorMsg = data.message;
+      
+      if (data.message.includes('does not exist')) {
+        errorMsg = 'This meeting doesn\'t exist. Please ask the host to create a new meeting and share the link.';
+      } else if (data.message.includes('ended')) {
+        errorMsg = 'This meeting has ended. Please start a new meeting.';
+      } else if (data.message.includes('already in')) {
+        errorMsg = 'You are already in this meeting. Please close other windows.';
+      }
+      
+      this.uiManager.showError(errorTitle, errorMsg);
       setTimeout(() => {
         this.uiManager.showPage('landing');
-      }, 2000);
+      }, 3000);
     });
 
     // Room events
     this.socket.on('room-created', (data) => {
-      console.log('Room created:', data);
+      console.log('Host created room:', data);
       this.state.roomId = data.roomId;
       this.state.isHost = true;
-      this.uiManager.setRoomId(data.roomId);
-      this.uiManager.updateShareLink(data.roomId);
+      this.uiManager.showNotification('Meeting created successfully', 'success');
     });
 
     this.socket.on('room-joined', (data) => {
-      console.log('Joined room:', data);
+      console.log('Participant joined room:', data);
       this.state.roomId = data.roomId;
-      this.uiManager.setRoomId(data.roomId);
-      this.uiManager.updateShareLink(data.roomId);
+      this.state.isHost = data.isHost || false;
+      this.uiManager.showNotification('Connected to meeting', 'success');
     });
 
     this.socket.on('user-joined', (data) => {
@@ -291,10 +304,15 @@ class App {
   }
 
   showJoinDialog() {
+    // Focus on the meeting link input for better UX
     const linkInput = document.getElementById('meeting-link-input');
     linkInput.value = '';
     linkInput.focus();
-    this.uiManager.showNotification('Enter meeting link or code to join', 'info');
+    
+    // Scroll to input on mobile
+    if (window.innerWidth < 768) {
+      linkInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   }
 
   async joinFromLink() {
@@ -310,32 +328,53 @@ class App {
       
       // Try to extract room ID from various formats
       if (link.includes('/room/')) {
-        // Full URL format
+        // URL with /room/ path
         const url = new URL(link.includes('://') ? link : `https://${link}`);
         const pathParts = url.pathname.split('/');
         roomId = pathParts[pathParts.length - 1];
       } else if (link.includes('room=')) {
-        // Query parameter format
-        const url = new URL(link.includes('://') ? link : `https://${link}`);
-        roomId = url.searchParams.get('room');
-      } else if (link.includes('?') && link.includes('http')) {
-        // Parse URL with query parameters
-        const urlObj = new URL(link);
-        roomId = urlObj.searchParams.get('room');
-      } else {
-        // Direct room code format (8 characters)
-        if (/^[A-Z0-9]{8}$/i.test(link)) {
-          roomId = link.toUpperCase();
+        // Query parameter format (?room=CODE or full URL)
+        try {
+          const url = new URL(link.includes('://') ? link : `https://${link}`);
+          roomId = url.searchParams.get('room');
+        } catch (e) {
+          // If URL parsing fails, try as direct code
+          if (/^[A-Z0-9]{8}$/i.test(link)) {
+            roomId = link.toUpperCase();
+          }
         }
+      } else if (link.includes('http')) {
+        // Try parsing as full URL first
+        try {
+          const urlObj = new URL(link);
+          roomId = urlObj.searchParams.get('room');
+        } catch (e) {
+          console.warn('Could not parse URL:', e);
+        }
+      }
+
+      // If still no roomId, try direct 8-character code
+      if (!roomId && /^[A-Z0-9]{8}$/i.test(link)) {
+        roomId = link.toUpperCase();
       }
       
       if (!roomId) {
-        throw new Error('Invalid meeting link format. Use: the full link, room code, or /room/CODE format.');
+        throw new Error('Invalid meeting link format. Examples: CODE123AB, https://example.com/?room=CODE123AB, or https://example.com/room/CODE123AB');
       }
 
-      this.state.roomId = roomId;
+      // Validate room ID format
+      if (!/^[A-Z0-9]{8}$/i.test(roomId)) {
+        throw new Error('Invalid meeting code. Please use an 8-digit code.');
+      }
+
+      this.state.roomId = roomId.toUpperCase();
       this.state.isHost = false; // Joining as participant
+      
+      console.log(`Joining meeting from link: ${this.state.roomId}`);
       await this.prepareForMeeting();
+      
+      // Clear input after successful parsing
+      document.getElementById('meeting-link-input').value = '';
     } catch (error) {
       console.error('Error joining from link:', error);
       this.uiManager.showError('Invalid Link', error.message || 'Please enter a valid meeting link or 8-digit code.');
@@ -351,29 +390,45 @@ class App {
         const devices = await this.mediaManager.enumerateDevices();
         if (devices && (devices.videoinput || devices.audioinput)) {
           this.uiManager.populateDeviceSelects(devices);
+        } else {
+          console.warn('No camera or microphone devices found');
         }
       } catch (error) {
         console.warn('Could not enumerate devices:', error);
       }
 
-      // Get initial stream
+      // Get initial stream with better error handling
       try {
         const stream = await this.mediaManager.getLocalStream();
         this.state.localStream = stream;
         this.uiManager.updateVideoPreview(stream);
+        console.log('Local stream obtained successfully');
       } catch (error) {
-        console.warn('Could not get camera stream - proceeding without video:', error);
+        console.warn('Camera/microphone access denied or unavailable:', error);
+        // Show warning but allow user to proceed
+        if (error.name === 'NotAllowedError') {
+          this.uiManager.showNotification('Camera access blocked - audio-only mode', 'warning');
+        } else if (error.name === 'NotFoundError') {
+          this.uiManager.showNotification('No camera found - audio-only mode', 'warning');
+        }
         // Don't fail - user can still join without video
       }
       
       // Show setup page
       this.uiManager.showPage('setup');
-      this.uiManager.hideLoading();
+      
+      // Focus on username input
+      const usernameInput = document.getElementById('username-input');
+      if (usernameInput) {
+        setTimeout(() => usernameInput.focus(), 300);
+      }
       
       // Update UI with meeting link (for hosts)
       if (this.state.roomId && this.state.isHost) {
         this.uiManager.updateShareLink(this.state.roomId);
       }
+      
+      this.uiManager.hideLoading();
     } catch (error) {
       console.error('Unexpected error preparing for meeting:', error);
       this.uiManager.hideLoading();
@@ -395,8 +450,20 @@ class App {
         return;
       }
 
-      this.uiManager.showLoading('Joining meeting...');
+      // Check if socket is connected
+      if (!this.socket.connected) {
+        this.uiManager.showNotification('Connecting to server...', 'info');
+        // Wait for socket connection
+        await new Promise(resolve => {
+          if (this.socket.connected) {
+            resolve();
+          } else {
+            this.socket.once('connect', resolve);
+          }
+        });
+      }
 
+      this.uiManager.showLoading('Joining meeting...');
       this.state.isInMeeting = true;
 
       // Initialize WebRTC manager if not already done
@@ -409,30 +476,34 @@ class App {
         this.uiManager.addLocalStream(this.state.localStream, this.state.username);
       }
 
-      // Emit join event
+      // Update media button states before joining
+      const mediaState = this.mediaManager.getMediaState();
+      this.uiManager.setMicButtonState(mediaState.microphone);
+      this.uiManager.setCameraButtonState(mediaState.camera);
+
+      // Show meeting page immediately
+      this.uiManager.showPage('meeting');
+      this.uiManager.startMeetingTimer();
+
+      // Emit join-room event to server
+      console.log(`Emitting join-room for room ${this.state.roomId} as ${this.state.username}`);
       this.socket.emit('join-room', {
         roomId: this.state.roomId,
         username: this.state.username,
         userId: this.state.userId,
         isHost: this.state.isHost
+      }, (error) => {
+        if (error) {
+          console.error('Server error on join:', error);
+          this.uiManager.showError('Cannot Join', error);
+          setTimeout(() => this.backToLanding(), 1500);
+        }
       });
 
-      // Wait for room-joined confirmation and show meeting page after timeout
+      // Hide loading after a short delay to allow data to flow
       setTimeout(() => {
-        // Socket event will handle room-joined response
-      }, 100);
-
-      // Update media button states
-      const mediaState = this.mediaManager.getMediaState();
-      this.uiManager.setMicButtonState(mediaState.microphone);
-      this.uiManager.setCameraButtonState(mediaState.camera);
-
-      // Show meeting page
-      this.uiManager.showPage('meeting');
-      this.uiManager.hideLoading();
-
-      // Start meeting timer
-      this.uiManager.startMeetingTimer();
+        this.uiManager.hideLoading();
+      }, 300);
 
       // Send initial media state
       this.sendMediaState();
@@ -441,8 +512,9 @@ class App {
       this.uiManager.showNotification('Joined meeting successfully', 'success');
     } catch (error) {
       console.error('Error joining meeting:', error);
-      this.uiManager.showError('Error', 'Failed to join meeting. Please try again.');
+      this.state.isInMeeting = false;
       this.uiManager.hideLoading();
+      this.uiManager.showError('Error', 'Failed to join meeting. Please try again.');
     }
   }
 
@@ -711,11 +783,11 @@ class App {
 
   // ==================== SOCKET HANDLERS ====================
   async handleUserJoined(data) {
-    console.log(`${data.username} joined the meeting`);
+    console.log(`${data.username} (${data.socketId}) joined the meeting`);
     this.uiManager.showNotification(`${data.username} joined the meeting`, 'info');
 
-    // Create offer for new user
-    if (this.state.isInMeeting && this.state.localStream) {
+    // Create offer for new user if we have local stream and WebRTC manager
+    if (this.state.localStream && this.webrtcManager) {
       try {
         await this.webrtcManager.createOffer(data.socketId, this.state.localStream);
       } catch (error) {
@@ -725,12 +797,13 @@ class App {
   }
 
   async handleExistingUsers(users) {
+    console.log('Creating offers for existing users:', users.length);
     for (const user of users) {
-      if (this.state.isInMeeting && this.state.localStream) {
+      if (this.state.localStream && this.webrtcManager) {
         try {
           await this.webrtcManager.createOffer(user.socketId, this.state.localStream);
         } catch (error) {
-          console.error('Error creating offer for existing user:', error);
+          console.error(`Error creating offer for user ${user.socketId}:`, error);
         }
       }
     }

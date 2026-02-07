@@ -27,9 +27,10 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-// Room-specific URL
+// Room-specific URL - redirect to query param format
 app.get('/room/:roomId', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/index.html'));
+  const roomId = req.params.roomId;
+  res.redirect(`/?room=${roomId}`);
 });
 
 // API endpoint to create meeting
@@ -114,22 +115,30 @@ io.on('connection', (socket) => {
       }
     });
 
-    // Update host if this is the first participant
-    if (meeting.participants.size === 1) {
+    // Update host if this is the first participant (only if not explicitly set as host)
+    if (meeting.participants.size === 1 && !isHost) {
       meeting.host = socket.id;
       users.get(socket.id).isHost = true;
     }
 
-    // Notify the user
-    socket.emit('room-joined', {
-      roomId,
-      participants: Array.from(meeting.participants.values()).map(p => ({
-        socketId: p.socketId,
-        username: p.username,
-        userId: p.userId
-      })),
-      isHost: users.get(socket.id).isHost
-    });
+    // Notify the host about room creation
+    if (isHost && meeting.participants.size === 1) {
+      socket.emit('room-created', {
+        roomId,
+        isHost: true
+      });
+    } else {
+      // Notify joining participant
+      socket.emit('room-joined', {
+        roomId,
+        participants: Array.from(meeting.participants.values()).map(p => ({
+          socketId: p.socketId,
+          username: p.username,
+          userId: p.userId
+        })),
+        isHost: users.get(socket.id).isHost
+      });
+    }
 
     // Notify others in the room
     socket.to(roomId).emit('user-joined', {
