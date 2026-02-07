@@ -201,6 +201,14 @@ class App {
       }, 3000);
     });
 
+    this.socket.on('room-full', (data) => {
+      console.error('Room full:', data.message);
+      this.uiManager.hideLoading();
+      this.state.isInMeeting = false;
+      this.uiManager.showError('Room Full', data.message || 'This meeting is full.');
+      setTimeout(() => this.uiManager.showPage('landing'), 3000);
+    });
+
     // Room events
     this.socket.on('room-created', (data) => {
       console.log('Host created room:', data);
@@ -384,84 +392,56 @@ class App {
   async prepareForMeeting() {
     try {
       this.uiManager.showLoading('Preparing meeting...');
-      
-      // Enumerate devices
+
+      // Enumerate devices for selects (best-effort)
       try {
         const devices = await this.mediaManager.enumerateDevices();
-        if (devices && (devices.videoinput || devices.audioinput)) {
-          this.uiManager.populateDeviceSelects(devices);
-        } else {
-          console.warn('No camera or microphone devices found');
-        }
-      } catch (error) {
-        console.warn('Could not enumerate devices:', error);
+        if (devices) this.uiManager.populateDeviceSelects(devices);
+      } catch (err) {
+        console.warn('Could not enumerate devices:', err);
       }
 
-      // Get initial stream with better error handling
-      try {
-        const stream = await this.mediaManager.getLocalStream();
-        this.state.localStream = stream;
-        this.uiManager.updateVideoPreview(stream);
-        console.log('Local stream obtained successfully');
-      } catch (error) {
-      // Get initial stream with fallback strategy
-      try {
-        if (error.name === 'NotAllowedError') {
-          this.uiManager.showNotification('Camera access blocked - audio-only mode', 'warning');
-        } else if (error.name === 'NotFoundError') {
-          this.uiManager.showNotification('No camera found - audio-only mode', 'warning');
-        }
-        // Don't fail - user can still join without video
-      }
-      // Get initial stream with fallback strategy
+      // Attempt to get media with fallback strategy
       try {
         const stream = await this.mediaManager.getLocalStreamWithFallback();
         this.state.localStream = stream;
-        
-        // Check which tracks are available
-        const hasVideo = stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].enabled;
 
-        // Update media status badges
-        const mediaState = this.mediaManager.getMediaState();
-        this.uiManager.updateMediaStatusBadges(mediaState);
-        const hasAudio = stream.getAudioTracks().length > 0 && stream.getAudioTracks()[0].enabled;
-        
-        // Update UI preview
-          this.uiManager.showMediaAlert('📷 Camera access blocked - joining with audio only');
+        const hasVideo = stream.getVideoTracks && stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].enabled;
+        const hasAudio = stream.getAudioTracks && stream.getAudioTracks().length > 0 && stream.getAudioTracks()[0].enabled;
+
+        // Update UI preview only if we have video
+        if (hasVideo) {
           this.uiManager.updateVideoPreview(stream);
-          this.uiManager.showMediaAlert('🎤 Microphone access blocked - joining with video only');
-        } else if (hasVideo && hasAudio) {
-          console.log('✓ Both camera and microphone access granted');
-        } else {
-          console.log('✓ Local stream (audio-only) obtained successfully');
         }
-        this.uiManager.showMediaAlert('⚠️ ' + (error.message || 'Unable to access camera or microphone'));
-        // Show notification based on available tracks
+
+        // Update media badges
+        this.uiManager.updateMediaStatusBadges(this.mediaManager.getMediaState());
+
+        // Show helpful alerts based on what is available
         if (!hasVideo && hasAudio) {
-          this.uiManager.showNotification('📷 Camera access blocked - joining with audio only', 'info');
+          this.uiManager.showMediaAlert('Camera access unavailable — joining with audio only');
+          this.uiManager.showNotification('Camera access unavailable — joining with audio only', 'info');
         } else if (hasVideo && !hasAudio) {
-          this.uiManager.showNotification('🎤 Microphone access blocked - joining with video only', 'warning');
+          this.uiManager.showMediaAlert('Microphone access unavailable — joining with video only');
+          this.uiManager.showNotification('Microphone access unavailable — joining with video only', 'warning');
+        } else if (!hasVideo && !hasAudio) {
+          this.uiManager.showMediaAlert('No camera or microphone available — you can still join as an observer');
+          this.uiManager.showNotification('No camera or microphone available', 'warning');
         }
-      } catch (error) {
-        console.error('Unable to access media devices:', error);
-        this.uiManager.showNotification(error.message || 'Unable to access camera or microphone', 'error');
-        // Still allow to proceed to setup page - user can join audio-only
+      } catch (err) {
+        console.warn('Media access failed:', err);
+        this.uiManager.showMediaAlert('Unable to access camera or microphone');
+        this.uiManager.showNotification(err.message || 'Unable to access camera or microphone', 'error');
       }
-      
-      // Show setup page
+
+      // Show setup page and focus username
       this.uiManager.showPage('setup');
-      
-      // Focus on username input
       const usernameInput = document.getElementById('username-input');
-      if (usernameInput) {
-        setTimeout(() => usernameInput.focus(), 300);
-      }
-      
-      // Update UI with meeting link (for hosts)
-      if (this.state.roomId && this.state.isHost) {
-        this.uiManager.updateShareLink(this.state.roomId);
-      }
-      
+      if (usernameInput) setTimeout(() => usernameInput.focus(), 300);
+
+      // Update share link for hosts
+      if (this.state.roomId && this.state.isHost) this.uiManager.updateShareLink(this.state.roomId);
+
       this.uiManager.hideLoading();
     } catch (error) {
       console.error('Unexpected error preparing for meeting:', error);
@@ -876,7 +856,14 @@ class App {
     // Create offer for new user if we have local stream and WebRTC manager
     if (this.state.localStream && this.webrtcManager) {
       try {
-        await this.webrtcManager.createOffer(data.socketId, this.state.localStream);
+        // Limit total peer connections to 2 remote peers (max 3 participants including local)
+        const maxRemotePeers = 2;
+        const currentRemotes = this.webrtcManager.getActiveConnections();
+        if (currentRemotes < maxRemotePeers) {
+          await this.webrtcManager.createOffer(data.socketId, this.state.localStream);
+        } else {
+          console.log('Max remote peers reached; not creating offer for', data.socketId);
+        }
       } catch (error) {
         console.error('Error creating offer:', error);
       }
@@ -885,13 +872,20 @@ class App {
 
   async handleExistingUsers(users) {
     console.log('Creating offers for existing users:', users.length);
+    if (!this.state.localStream || !this.webrtcManager) return;
+
+    const maxRemotePeers = 2; // allow up to 2 remote peers
+    let created = 0;
+
     for (const user of users) {
-      if (this.state.localStream && this.webrtcManager) {
-        try {
-          await this.webrtcManager.createOffer(user.socketId, this.state.localStream);
-        } catch (error) {
-          console.error(`Error creating offer for user ${user.socketId}:`, error);
-        }
+      // Respect maximum remote peers
+      if (this.webrtcManager.getActiveConnections() + created >= maxRemotePeers) break;
+
+      try {
+        await this.webrtcManager.createOffer(user.socketId, this.state.localStream);
+        created++;
+      } catch (error) {
+        console.error(`Error creating offer for user ${user.socketId}:`, error);
       }
     }
   }

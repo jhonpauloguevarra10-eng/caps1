@@ -83,6 +83,13 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Enforce maximum participants per meeting (including host)
+    const MAX_PARTICIPANTS = 3;
+    if (meeting.participants.size >= MAX_PARTICIPANTS) {
+      socket.emit('room-full', { message: 'Meeting is full. Maximum 3 participants allowed.' });
+      return;
+    }
+
     // Check if user is already in the room
     if (meeting.participants.has(socket.id)) {
       socket.emit('room-error', { message: 'Already in this meeting' });
