@@ -86,9 +86,12 @@ class MediaManager {
 
   // Advanced retry with fallback constraints
   async getLocalStreamWithFallback(preferAudio = false, preferVideo = false) {
+    // Build strategies array with multiple fallback options
     const strategies = [
-      MEDIA_CONSTRAINTS,
-      FALLBACK_CONSTRAINTS
+      MEDIA_CONSTRAINTS,  // Full constraints with ideals and mins
+      FALLBACK_CONSTRAINTS,  // Just true/true
+      { video: true, audio: true },  // Explicit true
+      { video: { facingMode: 'user' }, audio: true },  // Simpler video
     ];
 
     // Add audio-only or video-only based on preferences

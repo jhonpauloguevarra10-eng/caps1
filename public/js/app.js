@@ -432,8 +432,18 @@ class App {
         const stream = await this.mediaManager.getLocalStreamWithFallback();
         this.state.localStream = stream;
 
-        const hasVideo = stream.getVideoTracks && stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].enabled;
-        const hasAudio = stream.getAudioTracks && stream.getAudioTracks().length > 0 && stream.getAudioTracks()[0].enabled;
+        // Safely check for tracks 
+        const videoTracks = stream.getVideoTracks ? stream.getVideoTracks() : [];
+        const audioTracks = stream.getAudioTracks ? stream.getAudioTracks() : [];
+        
+        const hasVideo = videoTracks.length > 0 && videoTracks[0].enabled;
+        const hasAudio = audioTracks.length > 0 && audioTracks[0].enabled;
+
+        // Update media state in manager
+        this.mediaManager.mediaState.camera = hasVideo;
+        this.mediaManager.mediaState.microphone = hasAudio;
+
+        console.log(`Media access: Video=${hasVideo}, Audio=${hasAudio}`);
 
         // Update UI preview only if we have video
         if (hasVideo) {
@@ -445,19 +455,22 @@ class App {
 
         // Show helpful alerts based on what is available
         if (!hasVideo && hasAudio) {
-          this.uiManager.showMediaAlert('Camera access unavailable — joining with audio only');
-          this.uiManager.showNotification('Camera access unavailable — joining with audio only', 'info');
+          this.uiManager.showMediaAlert('📷 Camera access unavailable — joining with audio only');
+          this.uiManager.showNotification('📷 Camera access unavailable — joining with audio only', 'info');
         } else if (hasVideo && !hasAudio) {
-          this.uiManager.showMediaAlert('Microphone access unavailable — joining with video only');
-          this.uiManager.showNotification('Microphone access unavailable — joining with video only', 'warning');
+          this.uiManager.showMediaAlert('🎤 Microphone access unavailable — joining with video only');
+          this.uiManager.showNotification('🎤 Microphone access unavailable — joining with video only', 'warning');
         } else if (!hasVideo && !hasAudio) {
-          this.uiManager.showMediaAlert('No camera or microphone available — you can still join as an observer');
-          this.uiManager.showNotification('No camera or microphone available', 'warning');
+          this.uiManager.showMediaAlert('⚠️ No camera or microphone available — you can join as observer');
+          this.uiManager.showNotification('⚠️ No camera or microphone available', 'warning');
+        } else {
+          console.log('✓ Both camera and microphone available');
         }
       } catch (err) {
-        console.warn('Media access failed:', err);
-        this.uiManager.showMediaAlert('Unable to access camera or microphone');
-        this.uiManager.showNotification(err.message || 'Unable to access camera or microphone', 'error');
+        console.error('Media access failed - participant may not have camera/mic:', err);
+        this.uiManager.showMediaAlert('⚠️ No camera or microphone found. You can still join and listen.');
+        this.uiManager.showNotification('No media devices available - joining as observer', 'warning');
+        // Do NOT fail out - let participant continue to join
       }
 
       // Show setup page and focus username

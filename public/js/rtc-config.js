@@ -20,36 +20,30 @@ const RTC_CONFIG = {
 // Desktop constraints - high quality
 const DESKTOP_CONSTRAINTS = {
   video: {
-    width: { ideal: 1280, min: 640, max: 1920 },
-    height: { ideal: 720, min: 480, max: 1080 },
-    frameRate: { ideal: 30, min: 20, max: 60 },
+    width: { ideal: 1280, min: 640 },
+    height: { ideal: 720, min: 480 },
+    frameRate: { ideal: 30 },
     facingMode: 'user'
   },
   audio: {
     echoCancellation: true,
     noiseSuppression: true,
-    autoGainControl: true,
-    channelCount: 2,
-    sampleRate: 48000,
-    sampleSize: 16
+    autoGainControl: true
   }
 };
 
 // Mobile constraints - optimized for performance
 const MOBILE_CONSTRAINTS = {
   video: {
-    width: { ideal: 720, min: 320, max: 1280 },
-    height: { ideal: 480, min: 240, max: 720 },
-    frameRate: { ideal: 24, min: 15, max: 30 },
+    width: { ideal: 720, min: 320 },
+    height: { ideal: 480, min: 240 },
+    frameRate: { ideal: 24 },
     facingMode: 'user'
   },
   audio: {
     echoCancellation: true,
     noiseSuppression: true,
-    autoGainControl: true,
-    channelCount: 1,
-    sampleRate: 16000,
-    sampleSize: 16
+    autoGainControl: true
   }
 };
 
@@ -72,9 +66,9 @@ const AUDIO_ONLY_CONSTRAINTS = {
 // Video-only constraints (when microphone denied)
 const VIDEO_ONLY_CONSTRAINTS = {
   video: {
-    width: { ideal: 1280, min: 640, max: 1920 },
-    height: { ideal: 720, min: 480, max: 1080 },
-    frameRate: { ideal: 30, min: 20, max: 60 },
+    width: { ideal: 1280, min: 640 },
+    height: { ideal: 720, min: 480 },
+    frameRate: { ideal: 30 },
     facingMode: 'user'
   },
   audio: false
