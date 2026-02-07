@@ -3,59 +3,86 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Video Conferencing App</title>
+  <title>VideoMeet - Premium Video Conferencing</title>
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
   <!-- Landing Page -->
   <div id="landing-page" class="page">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo">VM</div>
+        <h1>VideoMeet</h1>
+      </div>
+      <div class="nav-actions">
+        <div class="pill">
+          <i class="fas fa-shield-alt"></i> Secure & Private
+        </div>
+      </div>
+    </div>
+    
     <div class="landing-container">
       <div class="landing-card">
         <div class="landing-left">
-          <h1 class="hero-title">VideoMeet</h1>
-          <p class="hero-sub">Premium video conferencing designed for seamless collaboration</p>
+          <h1 class="hero-title">Premium Video Conferencing</h1>
+          <p class="hero-sub">Crystal clear meetings with real-time collaboration tools. Join millions who trust VideoMeet for seamless communication.</p>
           
           <div class="cta-row">
-            <button id="btn-new-meeting" class="btn btn-primary" style="padding: 14px 32px; border-radius: 10px; font-weight: 600; font-size: 1rem;">
-              ➕ Start Meeting
+            <button id="btn-new-meeting" class="btn btn-primary">
+              <i class="fas fa-video"></i> New Meeting
+            </button>
+            <button id="btn-join-meeting" class="btn btn-secondary">
+              <i class="fas fa-sign-in-alt"></i> Join
             </button>
           </div>
           
-          <div class="join-section" style="margin-top: 28px;">
-            <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 10px; font-weight: 500;">Join via link</p>
-            <div style="display: flex; gap: 8px;">
+          <div class="join-section">
+            <div class="join-input-group">
               <input 
                 type="text" 
                 id="meeting-link-input" 
-                class="muted-input" 
-                placeholder="Paste meeting code or link..."
+                class="join-input" 
+                placeholder="Enter meeting code or paste link"
                 autocomplete="off"
-                style="flex: 1; padding: 12px 14px; border-radius: 10px;"
               >
-              <button id="btn-join-from-link" class="btn btn-primary" style="padding: 12px 24px; border-radius: 10px; font-weight: 600;">
-                Join
+              <button id="btn-join-from-link" class="btn btn-join">
+                <i class="fas fa-arrow-right"></i>
               </button>
             </div>
+            <p class="join-hint">Paste the meeting link or enter the 8-digit code</p>
           </div>
         </div>
         
         <div class="landing-right">
-          <div class="features">
-            <div class="feature">
-              <div class="icon">🎥</div>
-              <div><strong>Crystal Clear Video</strong><br><span style="font-size: 0.85rem; color: var(--muted);">Up to HD</span></div>
+          <div class="features-grid">
+            <div class="feature-card">
+              <div class="feature-icon">
+                <i class="fas fa-video"></i>
+              </div>
+              <h3>HD Video</h3>
+              <p>Crystal clear 720p/1080p video quality</p>
             </div>
-            <div class="feature">
-              <div class="icon">🎤</div>
-              <div><strong>Crystal Audio</strong><br><span style="font-size: 0.85rem; color: var(--muted);">Noise cancellation</span></div>
+            <div class="feature-card">
+              <div class="feature-icon">
+                <i class="fas fa-microphone"></i>
+              </div>
+              <h3>Smart Audio</h3>
+              <p>Noise cancellation & echo removal</p>
             </div>
-            <div class="feature">
-              <div class="icon">💬</div>
-              <div><strong>Real-time Chat</strong><br><span style="font-size: 0.85rem; color: var(--muted);">Stay connected</span></div>
+            <div class="feature-card">
+              <div class="feature-icon">
+                <i class="fas fa-comments"></i>
+              </div>
+              <h3>Live Chat</h3>
+              <p>Real-time messaging during meetings</p>
             </div>
-            <div class="feature">
-              <div class="icon">🔒</div>
-              <div><strong>Secure & Private</strong><br><span style="font-size: 0.85rem; color: var(--muted);">End-to-end safe</span></div>
+            <div class="feature-card">
+              <div class="feature-icon">
+                <i class="fas fa-shield-alt"></i>
+              </div>
+              <h3>Secure</h3>
+              <p>End-to-end encrypted & private</p>
             </div>
           </div>
         </div>
@@ -65,67 +92,120 @@
 
   <!-- Meeting Setup Page -->
   <div id="setup-page" class="page hidden">
-    <div class="setup-container">
-      <h2>Prepare for Meeting</h2>
-      
-      <div class="setup-content">
-        <!-- Video Preview -->
-        <div class="preview-section">
-          <video id="setup-video" class="video-preview" autoplay muted playsinline></video>
-          <div class="video-label">Camera Preview</div>
+    <div class="setup-header">
+      <div class="setup-header-content">
+        <button id="btn-back" class="btn btn-back">
+          <i class="fas fa-arrow-left"></i> Back
+        </button>
+        <div class="setup-title">
+          <h2><i class="fas fa-cog"></i> Setup Your Meeting</h2>
+          <p class="room-id-display">Room: <span id="room-id-display">XXXX-XXXX</span></p>
         </div>
-
-        <!-- Controls -->
-        <div class="setup-controls">
-          <!-- Username Input -->
+        <button id="btn-join-ready" class="btn btn-primary">
+          Join Now <i class="fas fa-arrow-right"></i>
+        </button>
+      </div>
+    </div>
+    
+    <div class="setup-container">
+      <div class="setup-content">
+        <!-- Left: Video Preview -->
+        <div class="preview-section">
+          <div class="preview-wrapper">
+            <video id="setup-video" class="video-preview" autoplay muted playsinline></video>
+            <div class="preview-overlay">
+              <div class="preview-info">
+                <h3><i class="fas fa-eye"></i> Preview</h3>
+                <p>This is how others will see you</p>
+              </div>
+              <div class="preview-controls">
+                <button id="toggle-camera-setup" class="btn-control btn-control-active" title="Toggle Camera">
+                  <i class="fas fa-video"></i>
+                </button>
+                <button id="toggle-mic-setup" class="btn-control btn-control-active" title="Toggle Microphone">
+                  <i class="fas fa-microphone"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Right: Setup Controls -->
+        <div class="controls-section">
           <div class="control-group">
-            <label for="username-input">Your Name</label>
-            <input 
-              type="text" 
-              id="username-input" 
-              class="input-field" 
-              placeholder="Enter your name..."
-              maxlength="30"
-              autocomplete="off"
-            >
+            <label for="username-input">
+              <i class="fas fa-user"></i> Your Name
+            </label>
+            <div class="input-with-icon">
+              <i class="fas fa-user-circle"></i>
+              <input 
+                type="text" 
+                id="username-input" 
+                class="input-field" 
+                placeholder="Enter your name..."
+                maxlength="30"
+                autocomplete="off"
+                value="Guest"
+              >
+            </div>
           </div>
-
-          <!-- Camera Selection -->
+          
           <div class="control-group">
-            <label for="camera-select">Camera</label>
-            <select id="camera-select" class="input-field">
-              <option>Loading cameras...</option>
-            </select>
+            <label for="camera-select">
+              <i class="fas fa-video"></i> Camera
+            </label>
+            <div class="select-wrapper">
+              <i class="fas fa-camera"></i>
+              <select id="camera-select" class="select-field">
+                <option>Loading cameras...</option>
+              </select>
+            </div>
           </div>
-
-          <!-- Microphone Selection -->
+          
           <div class="control-group">
-            <label for="microphone-select">Microphone</label>
-            <select id="microphone-select" class="input-field">
-              <option>Loading microphones...</option>
-            </select>
+            <label for="microphone-select">
+              <i class="fas fa-microphone"></i> Microphone
+            </label>
+            <div class="select-wrapper">
+              <i class="fas fa-microphone-alt"></i>
+              <select id="microphone-select" class="select-field">
+                <option>Loading microphones...</option>
+              </select>
+            </div>
           </div>
-
-          <!-- Media Controls -->
-          <div class="media-toggles">
-            <button id="toggle-camera-setup" class="btn btn-icon-toggle btn-active" title="Camera">
-              <span class="icon">📷</span>
-              <span class="label">Camera On</span>
-            </button>
-            <button id="toggle-mic-setup" class="btn btn-icon-toggle btn-active" title="Microphone">
-              <span class="icon">🎤</span>
-              <span class="label">Mic On</span>
-            </button>
+          
+          <div class="control-group">
+            <label>
+              <i class="fas fa-sliders-h"></i> Meeting Options
+            </label>
+            <div class="options-grid">
+              <div class="option-item">
+                <input type="checkbox" id="toggle-audio" checked>
+                <label for="toggle-audio">Join with audio</label>
+              </div>
+              <div class="option-item">
+                <input type="checkbox" id="toggle-video" checked>
+                <label for="toggle-video">Join with video</label>
+              </div>
+            </div>
           </div>
-
-          <!-- Action Buttons -->
-          <div class="setup-actions">
-            <button id="btn-back" class="btn btn-secondary">Back</button>
-            <button id="btn-join-meeting" class="btn btn-primary">Join Meeting</button>
+          
+          <div class="share-section">
+            <h4><i class="fas fa-share-alt"></i> Invite Others</h4>
+            <div class="share-input-group">
+              <input 
+                type="text" 
+                id="share-link-input" 
+                class="share-input" 
+                readonly
+                placeholder="Meeting link will appear here"
+              >
+              <button id="btn-copy-link" class="btn btn-copy">
+                <i class="fas fa-copy"></i> Copy
+              </button>
+            </div>
+            <p class="share-hint">Share this link with others to invite them to the meeting</p>
           </div>
-
-          <!-- Error Message -->
-          <div id="setup-error" class="error-message hidden"></div>
         </div>
       </div>
     </div>
@@ -133,59 +213,63 @@
 
   <!-- Meeting Page -->
   <div id="meeting-page" class="page hidden">
+    <!-- Top Bar -->
+    <div class="meeting-topbar">
+      <div class="meeting-info">
+        <div class="meeting-title">
+          <i class="fas fa-video"></i>
+          <span id="meeting-title-text">VideoMeet Conference</span>
+          <span class="participant-count">
+            <i class="fas fa-users"></i> <span id="participant-count">1</span>
+          </span>
+        </div>
+        <div class="meeting-time">
+          <i class="fas fa-clock"></i> <span id="meeting-timer">00:00</span>
+        </div>
+      </div>
+      
+      <div class="meeting-actions">
+        <button id="btn-share-screen" class="btn-topbar" title="Share Screen">
+          <i class="fas fa-desktop"></i> Share
+        </button>
+        <button id="btn-record-meeting" class="btn-topbar" title="Record Meeting">
+          <i class="fas fa-circle"></i> Record
+        </button>
+        <button id="btn-fullscreen" class="btn-topbar" title="Fullscreen">
+          <i class="fas fa-expand"></i>
+        </button>
+      </div>
+    </div>
+    
+    <!-- Main Content -->
     <div class="meeting-container">
       <!-- Video Grid -->
       <div class="video-grid-container">
-        <div id="video-grid" class="video-grid"></div>
-      </div>
-
-      <!-- Active Speaker Info -->
-      <div id="active-speaker-info" class="active-speaker-info hidden">
-        <span class="speaker-icon">🔊</span>
-        <span id="speaker-name">User Name</span>
-      </div>
-
-      <!-- Control Bar -->
-      <div class="control-bar">
-        <div class="controls-left">
-          <button id="btn-toggle-mic" class="btn btn-control" title="Mute/Unmute">
-            <span class="icon">🎤</span>
-          </button>
-          <button id="btn-toggle-camera" class="btn btn-control" title="Turn Camera On/Off">
-            <span class="icon">📷</span>
-          </button>
-          <button id="btn-share-link" class="btn btn-control" title="Copy Meeting Link">
-            <span class="icon">🔗</span>
-          </button>
+        <div id="video-grid" class="video-grid">
+          <!-- Video tiles will be inserted here -->
         </div>
-
-        <div class="controls-center">
-          <button id="btn-toggle-chat" class="btn btn-control btn-danger" title="Leave Meeting">
-            <span class="icon">💬</span>
-            <span id="chat-notification-badge" class="notification-badge hidden">0</span>
-          </button>
-          <button id="btn-leave" class="btn btn-control btn-danger" title="Leave Meeting">
-            <span class="icon">📞</span>
-          </button>
-          <button id="btn-fullscreen" class="btn btn-control" title="Fullscreen">
-            <span class="icon">🖥️</span>
-          </button>
-        </div>
-
-        <div class="controls-right">
-          <button id="btn-end-meeting" class="btn btn-control btn-danger" title="End Meeting (Host)">
-            <span class="icon">🛑</span>
-          </button>
+        
+        <!-- Active Speaker Highlight -->
+        <div id="active-speaker" class="active-speaker hidden">
+          <div class="speaker-indicator">
+            <i class="fas fa-volume-up"></i> Active Speaker: <span id="active-speaker-name"></span>
+          </div>
         </div>
       </div>
-
-      <!-- Chat Sidebar -->
-      <div id="chat-panel" class="chat-panel hidden">
+      
+      <!-- Chat Panel -->
+      <div id="chat-panel" class="chat-panel">
         <div class="chat-header">
-          <h3>Chat</h3>
-          <button id="btn-close-chat" class="btn-close">✕</button>
+          <h3><i class="fas fa-comments"></i> Chat</h3>
+          <button id="btn-close-chat" class="btn-icon">
+            <i class="fas fa-times"></i>
+          </button>
         </div>
-        <div id="chat-messages" class="chat-messages"></div>
+        <div id="chat-messages" class="chat-messages">
+          <div class="welcome-message">
+            <p><i class="fas fa-info-circle"></i> Welcome to the meeting! Start chatting with participants.</p>
+          </div>
+        </div>
         <div class="chat-input-area">
           <input 
             type="text" 
@@ -194,37 +278,134 @@
             placeholder="Type a message..."
             autocomplete="off"
           >
-          <button id="btn-send-message" class="btn-send">Send</button>
+          <button id="btn-send-message" class="btn-send">
+            <i class="fas fa-paper-plane"></i>
+          </button>
         </div>
       </div>
-
-      <!-- Meeting Info Toast -->
-      <div id="meeting-toast" class="toast hidden">
-        <span id="toast-message">Toast message</span>
-      </div>
-
-      <!-- Copy Notification -->
-      <div id="copy-notification" class="copy-notification hidden">
-        ✓ Meeting link copied!
+      
+      <!-- Participants Panel -->
+      <div id="participants-panel" class="participants-panel hidden">
+        <div class="participants-header">
+          <h3><i class="fas fa-users"></i> Participants (<span id="participants-count">1</span>)</h3>
+          <button id="btn-close-participants" class="btn-icon">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div id="participants-list" class="participants-list">
+          <!-- Participants will be listed here -->
+        </div>
       </div>
     </div>
+    
+    <!-- Control Bar -->
+    <div class="control-bar">
+      <div class="control-left">
+        <button id="btn-toggle-mic" class="btn-control btn-control-active" title="Mute/Unmute">
+          <i class="fas fa-microphone"></i>
+          <span class="control-label">Mute</span>
+        </button>
+        <button id="btn-toggle-camera" class="btn-control btn-control-active" title="Turn Camera On/Off">
+          <i class="fas fa-video"></i>
+          <span class="control-label">Stop Video</span>
+        </button>
+        <button id="btn-toggle-chat" class="btn-control" title="Toggle Chat">
+          <i class="fas fa-comment"></i>
+          <span class="control-label">Chat</span>
+          <span id="chat-notification" class="notification-badge hidden">0</span>
+        </button>
+        <button id="btn-toggle-participants" class="btn-control" title="Participants">
+          <i class="fas fa-users"></i>
+          <span class="control-label">People</span>
+          <span id="participants-badge" class="notification-badge hidden">1</span>
+        </button>
+      </div>
+      
+      <div class="control-center">
+        <button id="btn-share-link" class="btn-control" title="Share Meeting Link">
+          <i class="fas fa-link"></i>
+        </button>
+        <button id="btn-settings" class="btn-control" title="Settings">
+          <i class="fas fa-cog"></i>
+        </button>
+        <button id="btn-leave" class="btn-leave" title="Leave Meeting">
+          <i class="fas fa-phone-slash"></i>
+          <span class="leave-label">Leave</span>
+        </button>
+      </div>
+      
+      <div class="control-right">
+        <button id="btn-end-meeting" class="btn-end" title="End Meeting for All">
+          <i class="fas fa-power-off"></i>
+          <span>End</span>
+        </button>
+      </div>
+    </div>
+    
+    <!-- Notifications -->
+    <div id="notification-area" class="notification-area"></div>
   </div>
 
   <!-- Loading Overlay -->
   <div id="loading-overlay" class="loading-overlay hidden">
-    <div class="spinner"></div>
-    <p id="loading-text">Loading...</p>
-  </div>
-
-  <!-- Error Modal -->
-  <div id="error-modal" class="modal hidden">
-    <div class="modal-content">
-      <h3 id="error-title">Error</h3>
-      <p id="error-text">An error occurred</p>
-      <button id="btn-error-close" class="btn btn-primary">Close</button>
+    <div class="loading-content">
+      <div class="spinner"></div>
+      <h3 id="loading-text">Joining Meeting...</h3>
+      <p class="loading-subtext">Please wait while we connect you</p>
     </div>
   </div>
 
+  <!-- Modal Dialogs -->
+  <div id="modal-overlay" class="modal-overlay hidden"></div>
+  
+  <div id="error-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <i class="fas fa-exclamation-circle modal-icon"></i>
+        <h3 id="error-title">Error</h3>
+      </div>
+      <div class="modal-body">
+        <p id="error-message">An error occurred</p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-error-close" class="btn btn-primary">OK</button>
+      </div>
+    </div>
+  </div>
+  
+  <div id="invite-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <i class="fas fa-share-alt modal-icon"></i>
+        <h3>Invite Others</h3>
+      </div>
+      <div class="modal-body">
+        <p>Share this link with others to join the meeting:</p>
+        <div class="invite-link-group">
+          <input type="text" id="invite-link" class="invite-link" readonly>
+          <button id="btn-copy-invite" class="btn btn-copy">
+            <i class="fas fa-copy"></i>
+          </button>
+        </div>
+        <div class="share-buttons">
+          <button class="btn-share-social">
+            <i class="fab fa-whatsapp"></i> WhatsApp
+          </button>
+          <button class="btn-share-social">
+            <i class="fas fa-envelope"></i> Email
+          </button>
+          <button class="btn-share-social">
+            <i class="fab fa-slack"></i> Slack
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-close-invite" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="js/rtc-config.js"></script>
   <script src="js/media-manager.js"></script>
