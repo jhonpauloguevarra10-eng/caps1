@@ -1,17 +1,26 @@
 {
-  "name": "caps-video-conference",
+  "name": "video-conferencing-app",
   "version": "1.0.0",
-  "description": "Production-ready video conferencing app using WebRTC, Socket.IO, Node.js",
-  "main": "server.js",
+  "description": "Production-ready video conferencing application similar to Zoom and Google Meet",
+  "main": "server/server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server/server.js",
+    "dev": "node server/server.js"
   },
-  "engines": {
-    "node": ">=16"
-  },
+  "keywords": [
+    "video",
+    "conferencing",
+    "webrtc",
+    "socket.io"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
     "socket.io": "^4.7.2",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.1"
+  },
+  "engines": {
+    "node": "18.x"
   }
 }
