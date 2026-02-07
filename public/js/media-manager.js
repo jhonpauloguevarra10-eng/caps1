@@ -27,20 +27,13 @@ class MediaManager {
     }
   }
 
-  // Get user media
-  async getLocalStream(videoDeviceId = null, audioDeviceId = null) {
+  // Get user media with fallback options
+  async getLocalStream(videoDeviceId = null, audioDeviceId = null, retryCount = 0) {
     try {
       const constraints = {
-        video: MEDIA_CONSTRAINTS.video,
-        audio: MEDIA_CONSTRAINTS.audio
+        video: videoDeviceId ? { ...MEDIA_CONSTRAINTS.video, deviceId: { exact: videoDeviceId } } : MEDIA_CONSTRAINTS.video,
+        audio: audioDeviceId ? { ...MEDIA_CONSTRAINTS.audio, deviceId: { exact: audioDeviceId } } : MEDIA_CONSTRAINTS.audio
       };
-
-      if (videoDeviceId) {
-        constraints.video.deviceId = { exact: videoDeviceId };
-      }
-      if (audioDeviceId) {
-        constraints.audio.deviceId = { exact: audioDeviceId };
-      }
 
       this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
       this.mediaState = {
@@ -49,7 +42,17 @@ class MediaManager {
       };
       return this.localStream;
     } catch (error) {
-      console.error('Error accessing media devices:', error);
+      // Handle specific errors
+      if (error.name === 'NotAllowedError') {
+        console.error('Permission denied - user blocked access or overlay is blocking permission dialog');
+        error.message = 'Camera/microphone permission denied. Please check browser settings and close any overlays.';
+      } else if (error.name === 'NotFoundError') {
+        console.error('No camera or microphone found');
+        error.message = 'No camera or microphone detected on your device.';
+      } else if (error.name === 'NotReadableError') {
+        console.error('Media device is already in use');
+        error.message = 'Camera/microphone is already in use by another app. Please close it and try again.';
+      }
       throw error;
     }
   }

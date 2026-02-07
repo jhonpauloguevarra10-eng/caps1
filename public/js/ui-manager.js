@@ -35,6 +35,7 @@ class UIManager {
   }
 
   showError(title, message) {
+    document.getElementById('error-title').textContent = title;
     document.getElementById('error-text').textContent = message;
     document.getElementById('error-modal').classList.remove('hidden');
   }

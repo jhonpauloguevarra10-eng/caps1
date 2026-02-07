@@ -216,7 +216,7 @@ class App {
     try {
       this.uiManager.showLoading('Preparing meeting...');
       
-      // Enumerate devices first
+      // Enumerate devices first (this should not trigger permission prompt)
       try {
         await this.mediaManager.enumerateDevices();
         this.uiManager.populateDeviceSelects(this.mediaManager.devices);
@@ -224,33 +224,54 @@ class App {
         console.warn('Could not enumerate devices:', error);
       }
 
-      // Get initial stream
+      // Get initial stream - this will trigger permission prompt
       try {
         const stream = await this.mediaManager.getLocalStream();
         this.state.localStream = stream;
         this.uiManager.updateVideoPreview(stream);
-      } catch (error) {
-        console.warn('Could not get camera stream (will continue without video):', error);
-        // Don't fail completely - user can still join without camera
-        this.uiManager.showSetupError('⚠️ Camera/microphone access denied. You can still join as audio/text only.');
-      }
-
-      // Show setup page
-      this.uiManager.showPage('setup');
-      this.uiManager.hideLoading();
-      
-      // Set button states
-      if (this.state.localStream) {
+        
+        // Show setup page
+        this.uiManager.showPage('setup');
+        this.uiManager.hideLoading();
+        
+        // Set button states
         this.uiManager.setSetupCameraButtonState(true);
         this.uiManager.setSetupMicButtonState(true);
-      } else {
-        this.uiManager.setSetupCameraButtonState(false);
-        this.uiManager.setSetupMicButtonState(false);
+      } catch (error) {
+        console.error('Error accessing media devices:', error);
+        this.uiManager.hideLoading();
+        
+        // Show detailed error message
+        let errorMessage = '';
+        if (error.name === 'NotAllowedError') {
+          errorMessage = '📛 Permission Denied!\n\n' +
+            'The permission dialog may be blocked by another app or overlay.\n\n' +
+            'Try:\n' +
+            '1. Close any floating windows, notifications, or apps\n' +
+            '2. Disable screen recording or streaming apps\n' +
+            '3. Refresh this page and try again\n\n' +
+            'You can still join as audio/text only without camera.';
+        } else if (error.name === 'NotFoundError') {
+          errorMessage = '❌ No Camera/Microphone Found\n\n' +
+            'Your device does not have a camera or microphone.\n\n' +
+            'You can still join as text-only.';
+        } else if (error.name === 'NotReadableError') {
+          errorMessage = '⚠️ Device In Use\n\n' +
+            'Your camera/microphone is already in use by another app.\n\n' +
+            'Please close that app and try again:\n' +
+            '• Close video calls (Teams, Zoom, etc)\n' +
+            '• Close camera apps (Snapchat, Instagram, etc)\n' +
+            '• Restart your browser';
+        } else {
+          errorMessage = '⚠️ ' + (error.message || 'Failed to access camera/microphone');
+        }
+        
+        this.uiManager.showError('Camera/Microphone Access', errorMessage);
       }
     } catch (error) {
-      console.error('Error preparing for meeting:', error);
+      console.error('Unexpected error preparing for meeting:', error);
       this.uiManager.hideLoading();
-      this.uiManager.showError('Setup Error', 'Failed to prepare meeting. Please check your browser permissions and try again.');
+      this.uiManager.showError('Setup Error', 'Failed to prepare meeting. Please refresh and try again.');
     }
   }
 
@@ -426,9 +447,16 @@ class App {
   }
 
   updateMediaButtonStates() {
-    const state = this.mediaManager.getMediaState();
-    this.uiManager.setCameraButtonState(state.camera);
-    this.uiManager.setMicButtonState(state.microphone);
+    // Only update button states if we have a local stream
+    if (this.state.localStream) {
+      const state = this.mediaManager.getMediaState();
+      this.uiManager.setCameraButtonState(state.camera);
+      this.uiManager.setMicButtonState(state.microphone);
+    } else {
+      // Disable media buttons if no stream
+      this.uiManager.setCameraButtonState(false);
+      this.uiManager.setMicButtonState(false);
+    }
   }
 
   // ==================== CHAT ====================
