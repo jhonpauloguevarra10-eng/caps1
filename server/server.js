@@ -55,6 +55,7 @@ io.on('connection', (socket) => {
     const { roomId, username, userId, isHost = false } = data;
     
     console.log(`User ${username} (${socket.id}) joining room ${roomId}, host: ${isHost}`);
+    console.log(`Current meetings on server:`, Array.from(meetings.keys()));
     
     // Validate or create room
     if (!meetings.has(roomId)) {
@@ -67,11 +68,18 @@ io.on('connection', (socket) => {
           participants: new Map(),
           isActive: true
         });
-        console.log(`New room created: ${roomId} by ${username}`);
+        console.log(`✓ New room created: ${roomId} by ${username}`);
       } else {
-        // User trying to join non-existent room
-        socket.emit('room-error', { message: 'Room does not exist' });
-        return;
+        // Participant trying to join - create room on-demand so they don't get stuck
+        // (Host may join immediately after, or participant may be first)
+        console.log(`⚠ Room ${roomId} not found. Creating on-demand for participant ${username}`);
+        meetings.set(roomId, {
+          id: roomId,
+          host: null,
+          createdAt: new Date(),
+          participants: new Map(),
+          isActive: true
+        });
       }
     }
 
